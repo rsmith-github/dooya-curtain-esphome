@@ -1,0 +1,178 @@
+# =============================================================================
+# Dooya DC1600 remote CAPTURE node — ESP32 DevKit V1 (30-pin) + CC1101 433 MHz
+# =============================================================================
+#
+# Purpose: listen for Dooya RF frames from a physical DC1600 (or compatible)
+# remote and dump id / channel / button / check in the ESPHome logs so you can
+# clone (re-transmit) those values later. This does NOT pair with the motor;
+# it only captures what the remote already sends.
+#
+# Hardware (VERIFY SILKSCREEN — DevKit V1 pin labels vary by clone):
+#   ESP32 DevKit V1 30-pin  +  CC1101 8-pin 433 MHz module
+#
+#   Power: 3V3 ONLY — do NOT connect VCC to 5V (will damage the CC1101).
+#   Antenna: attach / enable the antenna (or ~17.3 cm straight wire) before TX.
+#
+#   CC1101 pin  ->  ESP32 GPIO
+#   -----------     ----------
+#   VCC         ->  3V3
+#   GND         ->  GND
+#   SCK / CLK   ->  GPIO18
+#   MOSI        ->  GPIO23
+#   MISO        ->  GPIO19
+#   CSN / CS    ->  GPIO5
+#   GDO0        ->  GPIO4   (remote_transmitter data)
+#   GDO2        ->  GPIO16  (remote_receiver data)
+#
+# Requirements:
+#   ESPHome >= 2025.12 (native `cc1101` component, async ASK/OOK mode)
+#
+# Secrets (create secrets.yaml alongside this file, or use REPLACE_ME below):
+#   wifi_ssid, wifi_password
+#   api_encryption_key   # openssl rand -base64 32
+#   ota_password
+#
+# After capture: uncomment the button / service examples at the bottom and fill
+# in id / channel / button / check from the Dooya dump lines in the log.
+# =============================================================================
+
+esphome:
+  name: dooya-dc1600-capture
+  friendly_name: "Dooya DC1600 Capture"
+  # Enter RX on boot so frames are received immediately (not only after TX).
+  on_boot:
+    priority: -100
+    then:
+      - cc1101.begin_rx
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+# --- Network / API / OTA -----------------------------------------------------
+# Prefer !secret values. If you do not use secrets.yaml, replace the
+# REPLACE_ME placeholders below and remove the !secret lines.
+
+wifi:
+  ssid: !secret wifi_ssid          # or: "REPLACE_ME_WIFI_SSID"
+  password: !secret wifi_password  # or: "REPLACE_ME_WIFI_PASSWORD"
+  # Optional fallback AP if WiFi fails:
+  # ap:
+  #   ssid: "dooya-dc1600-capture-fallback"
+  #   password: "REPLACE_ME_AP_PASSWORD"
+
+# captive_portal:  # uncomment if using wifi.ap fallback
+
+logger:
+  # remote_receiver dumps (including `dooya`) appear at DEBUG+.
+  # Use VERBOSE for maximum RF debug noise while capturing.
+  level: DEBUG
+  # level: VERBOSE
+
+api:
+  encryption:
+    key: !secret api_encryption_key  # or: "REPLACE_ME_BASE64_32_BYTES"
+  # Optional: HA-callable service after you know capture values (see bottom).
+  # services:
+  #   - service: transmit_dooya
+  #     variables:
+  #       dooya_id: int
+  #       channel: int
+  #       btn: int
+  #       check: int
+  #     then:
+  #       - remote_transmitter.transmit_dooya:
+  #           id: !lambda "return (uint32_t) dooya_id;"
+  #           channel: !lambda "return (uint8_t) channel;"
+  #           button: !lambda "return (uint8_t) btn;"
+  #           check: !lambda "return (uint8_t) check;"
+  #           repeat:
+  #             times: 5
+  #             wait_time: 1ms
+
+ota:
+  - platform: esphome
+    password: !secret ota_password  # or: "REPLACE_ME_OTA_PASSWORD"
+
+# --- SPI + CC1101 (native, async ASK/OOK) ------------------------------------
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+  miso_pin: GPIO19
+
+cc1101:
+  cs_pin: GPIO5
+  frequency: 433.92MHz
+  modulation_type: ASK/OOK
+  # Defaults that work well for Dooya (match ESPHome / ha-dooya reference):
+  # output_power: 10
+  # symbol_rate: 5000
+  # filter_bandwidth: 203kHz
+
+# Dual-pin wiring (recommended): GDO0 = TX, GDO2 = RX
+remote_transmitter:
+  pin: GPIO4  # GDO0
+  carrier_duty_percent: 100%
+  on_transmit:
+    then:
+      - cc1101.begin_tx
+  on_complete:
+    then:
+      - cc1101.begin_rx
+
+remote_receiver:
+  pin: GPIO16  # GDO2
+  dump:
+    - dooya
+  tolerance: 50%
+  filter: 250us
+  idle: 7ms
+
+# =============================================================================
+# AFTER CAPTURE — uncomment and fill placeholders from log dumps
+# =============================================================================
+# Look in logs for lines like:
+#   Received Dooya: id=0x001612E5 channel=142 button=12 check=3
+# Button codes are typically: OPEN/UP=1, CLOSE/DOWN=3, STOP=5
+# (confirm against your remote's dump — check may mirror button on press).
+#
+# Example entity buttons (replace REPLACE_ME_* with captured values):
+#
+# button:
+#   - platform: template
+#     name: "Curtain OPEN"
+#     on_press:
+#       - remote_transmitter.transmit_dooya:
+#           id: 0xREPLACE_ME_ID        # e.g. 0x001612E5
+#           channel: REPLACE_ME_CH     # e.g. 142
+#           button: 1                  # OPEN / UP
+#           check: REPLACE_ME_CHECK    # e.g. 1
+#           repeat:
+#             times: 5
+#             wait_time: 1ms
+#
+#   - platform: template
+#     name: "Curtain STOP"
+#     on_press:
+#       - remote_transmitter.transmit_dooya:
+#           id: 0xREPLACE_ME_ID
+#           channel: REPLACE_ME_CH
+#           button: 5                  # STOP
+#           check: REPLACE_ME_CHECK
+#           repeat:
+#             times: 5
+#             wait_time: 1ms
+#
+#   - platform: template
+#     name: "Curtain CLOSE"
+#     on_press:
+#       - remote_transmitter.transmit_dooya:
+#           id: 0xREPLACE_ME_ID
+#           channel: REPLACE_ME_CH
+#           button: 3                  # CLOSE / DOWN
+#           check: REPLACE_ME_CHECK
+#           repeat:
+#             times: 5
+#             wait_time: 1ms
