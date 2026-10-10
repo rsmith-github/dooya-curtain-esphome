@@ -54,10 +54,25 @@ export default function HomePage() {
   }, [router]);
 
   useEffect(() => {
-    fetchStatus();
-    // Poll more frequently when moving (every 2s), otherwise every 10s
-    const interval = setInterval(fetchStatus, status?.movement !== "stopped" ? 2000 : 10000);
-    return () => clearInterval(interval);
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let mounted = true;
+
+    const poll = async () => {
+      await fetchStatus();
+      if (!mounted) return;
+      
+      // Only use fast polling when explicitly moving (not when status is null/undefined)
+      const isMoving = status?.movement === "opening" || status?.movement === "closing";
+      const delay = isMoving ? 2000 : 10000;
+      timeoutId = setTimeout(poll, delay);
+    };
+
+    poll();
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeoutId);
+    };
   }, [fetchStatus, status?.movement]);
 
   async function sendCommand(command: string) {

@@ -5,8 +5,14 @@ const MQTT_USERNAME = process.env.MQTT_USERNAME || "";
 const MQTT_PASSWORD = process.env.MQTT_PASSWORD || "";
 const MQTT_PORT = parseInt(process.env.MQTT_WSS_PORT || "8084", 10);
 
+function generateClientId(): string {
+  // Unique clientId per connection to prevent EMQX kicking off overlapping sessions
+  return `web-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+}
+
 function getMqttOptions(): IClientOptions {
   return {
+    clientId: generateClientId(),
     username: MQTT_USERNAME,
     password: MQTT_PASSWORD,
     protocol: "wss",
@@ -73,36 +79,44 @@ export async function readRetainedMessages(
     const messages: Record<string, string> = {};
     const receivedTopics = new Set<string>();
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
+    let subscribeTime = 0;
 
-    // Maximum time to wait overall
+    const done = () => {
+      clearTimeout(maxTimeout);
+      if (settleTimer) clearTimeout(settleTimer);
+      client.end();
+      resolve(messages);
+    };
+
+    // Maximum time to wait overall (4s to handle high-latency links)
     const maxTimeout = setTimeout(() => {
       if (settleTimer) clearTimeout(settleTimer);
       client.end(true);
       resolve(messages);
-    }, 3000);
+    }, 4000);
 
-    // After receiving a message, wait briefly for more before resolving
-    // This handles the case where retained messages arrive in quick succession
+    // Settle timer: wait for messages to stop arriving
+    // Ensures minimum 1200ms from subscribe for high-latency links (Vercel ↔ EMQX Singapore)
     const resetSettleTimer = () => {
       if (settleTimer) clearTimeout(settleTimer);
-      settleTimer = setTimeout(() => {
-        clearTimeout(maxTimeout);
-        client.end();
-        resolve(messages);
-      }, 500); // 500ms settle time - if no new messages, we're done
+      
+      const elapsed = Date.now() - subscribeTime;
+      const minWait = Math.max(0, 1200 - elapsed);
+      const settleWait = Math.max(500, minWait);
+      
+      settleTimer = setTimeout(done, settleWait);
     };
 
     client.on("connect", () => {
       client.subscribe(topics, { qos: 0 }, (err) => {
         if (err) {
           clearTimeout(maxTimeout);
-          if (settleTimer) clearTimeout(settleTimer);
           client.end(true);
           reject(err);
           return;
         }
-        // Start settle timer after subscription - retained messages should arrive quickly
-        resetSettleTimer();
+        subscribeTime = Date.now();
+        // Don't start settle timer yet - wait for first message
       });
     });
 
@@ -112,14 +126,11 @@ export async function readRetainedMessages(
       
       // Got all topics? Return immediately
       if (receivedTopics.size >= topics.length) {
-        clearTimeout(maxTimeout);
-        if (settleTimer) clearTimeout(settleTimer);
-        client.end();
-        resolve(messages);
+        done();
         return;
       }
       
-      // Reset settle timer on each message
+      // Start/reset settle timer after each message
       resetSettleTimer();
     });
 
