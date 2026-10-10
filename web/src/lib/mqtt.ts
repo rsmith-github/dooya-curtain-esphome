@@ -114,6 +114,12 @@ export const TOPICS = {
   CURTAIN_STATE: "dooya/curtain/state",
   CURTAIN_AVAILABILITY: "dooya/curtain/availability",
 
+  // Position tracking with confidence
+  CURTAIN_POSITION: "dooya/curtain/position",
+  CURTAIN_POSITION_KNOWN: "dooya/curtain/position_known",
+  CURTAIN_MOVEMENT: "dooya/curtain/movement",
+  CURTAIN_MOVEMENT_START_MS: "dooya/curtain/movement_start_ms",
+
   // Schedule control
   SCHEDULE_COMMAND: "dooya/schedule/command",
   SCHEDULE_STATE: "dooya/schedule/state",

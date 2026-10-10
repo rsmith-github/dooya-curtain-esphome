@@ -16,6 +16,10 @@ interface Settings {
 interface Status {
   online: boolean;
   curtainState: string;
+  position: number | null;
+  positionKnown: boolean;
+  movement: "stopped" | "opening" | "closing";
+  movementStartMs: number | null;
   scheduleEnabled: boolean | null;
   settings: Settings | null;
 }
@@ -51,9 +55,10 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
+    // Poll more frequently when moving (every 2s), otherwise every 10s
+    const interval = setInterval(fetchStatus, status?.movement !== "stopped" ? 2000 : 10000);
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+  }, [fetchStatus, status?.movement]);
 
   async function sendCommand(command: string) {
     setActionLoading(command);
@@ -141,12 +146,16 @@ export default function HomePage() {
     return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
   }
 
-  function getPositionEstimate(): number {
-    const state = status?.curtainState?.toLowerCase();
-    if (state === "opening" || state === "open") return 100;
-    if (state === "closing" || state === "closed") return 0;
-    if (state === "stopped") return 50;
-    return 50;
+  function getDisplayPosition(): number | null {
+    // Only return position if known with confidence
+    if (status?.positionKnown && status?.position !== null) {
+      return status.position;
+    }
+    return null;
+  }
+
+  function isMoving(): boolean {
+    return status?.movement === "opening" || status?.movement === "closing";
   }
 
   function startEdit(type: "partial" | "full") {
@@ -176,10 +185,11 @@ export default function HomePage() {
     );
   }
 
-  const positionEstimate = getPositionEstimate();
+  const displayPosition = getDisplayPosition();
+  const moving = isMoving();
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="min-h-screen bg-[var(--background)] flex flex-col">
       {/* Header */}
       <header className="border-b border-[var(--border)] bg-[var(--card)]">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4">
@@ -240,19 +250,71 @@ export default function HomePage() {
 
         {/* Curtain Control Card */}
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6 mb-6">
-          {/* Curtain Illustration */}
+          {/* Curtain Illustration - only show when position is known */}
           <div className="mb-6">
-            <CurtainIllustration openPercent={positionEstimate} />
+            {displayPosition !== null ? (
+              <CurtainIllustration openPercent={displayPosition} />
+            ) : (
+              <div className="h-32 flex items-center justify-center">
+                {/* Standby/Listening Icon - subtle beacon animation */}
+                <div className="relative">
+                  <div className={`w-16 h-16 rounded-full border-2 border-[var(--jade)] flex items-center justify-center ${moving ? "animate-pulse" : ""}`}>
+                    {moving ? (
+                      // Moving indicator
+                      <svg className={`w-8 h-8 text-[var(--jade)] ${status?.movement === "opening" ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+                      </svg>
+                    ) : (
+                      // Listening/standby icon
+                      <svg className="w-8 h-8 text-[var(--jade)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                    )}
+                  </div>
+                  {/* Subtle beacon rings when listening */}
+                  {!moving && (
+                    <>
+                      <div className="absolute inset-0 w-16 h-16 rounded-full border border-[var(--jade)] opacity-30 animate-ping" style={{ animationDuration: "3s" }}></div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Position Display */}
           <div className="text-center mb-6">
-            <p className="font-heading text-4xl sm:text-5xl text-[var(--text-primary)] tabular-nums">
-              {positionEstimate}%
-            </p>
-            <p className="font-body text-xs text-[var(--text-secondary)] mt-1 capitalize">
-              {status?.curtainState || "Unknown"} (estimate)
-            </p>
+            {moving ? (
+              // Moving state
+              <>
+                <p className="font-heading text-2xl sm:text-3xl text-[var(--text-primary)]">
+                  {status?.movement === "opening" ? "Opening" : "Closing"}...
+                </p>
+                <p className="font-body text-xs text-[var(--text-secondary)] mt-1">
+                  In motion
+                </p>
+              </>
+            ) : displayPosition !== null ? (
+              // Known position
+              <>
+                <p className="font-heading text-4xl sm:text-5xl text-[var(--text-primary)] tabular-nums">
+                  {displayPosition}%
+                </p>
+                <p className="font-body text-xs text-[var(--text-secondary)] mt-1">
+                  {displayPosition === 100 ? "Fully open" : displayPosition === 0 ? "Fully closed" : "Partial"}
+                </p>
+              </>
+            ) : (
+              // Unknown position - standby/listening
+              <>
+                <p className="font-heading text-xl sm:text-2xl text-[var(--text-secondary)]">
+                  Standby
+                </p>
+                <p className="font-body text-xs text-[var(--text-secondary)] mt-1">
+                  Listening for commands
+                </p>
+              </>
+            )}
           </div>
 
           {/* Control Buttons */}
