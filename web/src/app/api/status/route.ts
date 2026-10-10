@@ -27,17 +27,27 @@ export async function GET() {
       TOPICS.FULL_MINUTE,
     ]);
 
+    // Use null for unknown values (no retained message received)
+    const scheduleState = messages[TOPICS.SCHEDULE_STATE];
+    const hasScheduleSettings = 
+      TOPICS.PARTIAL_HOUR in messages ||
+      TOPICS.PARTIAL_MINUTE in messages ||
+      TOPICS.PARTIAL_SECONDS in messages ||
+      TOPICS.FULL_HOUR in messages ||
+      TOPICS.FULL_MINUTE in messages;
+
     return NextResponse.json({
       online: messages[TOPICS.CURTAIN_AVAILABILITY] === "online",
       curtainState: messages[TOPICS.CURTAIN_STATE] || "unknown",
-      scheduleEnabled: messages[TOPICS.SCHEDULE_STATE] === "ON",
-      settings: {
-        partialHour: parseInt(messages[TOPICS.PARTIAL_HOUR] || "7", 10),
-        partialMinute: parseInt(messages[TOPICS.PARTIAL_MINUTE] || "0", 10),
-        partialSeconds: parseInt(messages[TOPICS.PARTIAL_SECONDS] || "20", 10),
-        fullHour: parseInt(messages[TOPICS.FULL_HOUR] || "9", 10),
-        fullMinute: parseInt(messages[TOPICS.FULL_MINUTE] || "30", 10),
-      },
+      // Return null if we didn't receive the schedule state (don't assume OFF)
+      scheduleEnabled: scheduleState === undefined ? null : scheduleState === "ON",
+      settings: hasScheduleSettings ? {
+        partialHour: TOPICS.PARTIAL_HOUR in messages ? parseInt(messages[TOPICS.PARTIAL_HOUR], 10) : null,
+        partialMinute: TOPICS.PARTIAL_MINUTE in messages ? parseInt(messages[TOPICS.PARTIAL_MINUTE], 10) : null,
+        partialSeconds: TOPICS.PARTIAL_SECONDS in messages ? parseInt(messages[TOPICS.PARTIAL_SECONDS], 10) : null,
+        fullHour: TOPICS.FULL_HOUR in messages ? parseInt(messages[TOPICS.FULL_HOUR], 10) : null,
+        fullMinute: TOPICS.FULL_MINUTE in messages ? parseInt(messages[TOPICS.FULL_MINUTE], 10) : null,
+      } : null,
     });
   } catch (error) {
     console.error("Status fetch error:", error);

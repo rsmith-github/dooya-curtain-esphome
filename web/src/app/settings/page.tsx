@@ -5,23 +5,26 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 interface Settings {
-  partialHour: number;
-  partialMinute: number;
-  partialSeconds: number;
-  fullHour: number;
-  fullMinute: number;
+  partialHour: number | null;
+  partialMinute: number | null;
+  partialSeconds: number | null;
+  fullHour: number | null;
+  fullMinute: number | null;
 }
 
+const defaultSettings: Settings = {
+  partialHour: 7,
+  partialMinute: 0,
+  partialSeconds: 20,
+  fullHour: 9,
+  fullMinute: 30,
+};
+
 export default function SettingsPage() {
-  const [settings, setSettings] = useState<Settings>({
-    partialHour: 7,
-    partialMinute: 0,
-    partialSeconds: 20,
-    fullHour: 9,
-    fullMinute: 30,
-  });
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [originalSettings, setOriginalSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [settingsUnavailable, setSettingsUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -36,8 +39,24 @@ export default function SettingsPage() {
       }
       if (res.ok) {
         const data = await res.json();
-        setSettings(data.settings);
-        setOriginalSettings(data.settings);
+        if (data.settings) {
+          // Fill in defaults for any null values from the API
+          const merged: Settings = {
+            partialHour: data.settings.partialHour ?? defaultSettings.partialHour,
+            partialMinute: data.settings.partialMinute ?? defaultSettings.partialMinute,
+            partialSeconds: data.settings.partialSeconds ?? defaultSettings.partialSeconds,
+            fullHour: data.settings.fullHour ?? defaultSettings.fullHour,
+            fullMinute: data.settings.fullMinute ?? defaultSettings.fullMinute,
+          };
+          setSettings(merged);
+          setOriginalSettings(merged);
+          setSettingsUnavailable(false);
+        } else {
+          // No settings received from device
+          setSettingsUnavailable(true);
+          setSettings(defaultSettings);
+          setOriginalSettings(null);
+        }
       }
     } catch {
       setError("Failed to load settings");
@@ -77,13 +96,15 @@ export default function SettingsPage() {
     }
   }
 
-  const hasChanges = originalSettings && JSON.stringify(settings) !== JSON.stringify(originalSettings);
+  const hasChanges = originalSettings && settings && JSON.stringify(settings) !== JSON.stringify(originalSettings);
 
-  function formatTime(hour: number, minute: number): string {
+  function formatTime(hour: number | null, minute: number | null): string {
+    if (hour === null || minute === null) return "--:--";
     return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
   }
 
-  function calculatePercentage(seconds: number): number {
+  function calculatePercentage(seconds: number | null): number {
+    if (seconds === null) return 0;
     return Math.round((seconds / 40) * 100);
   }
 
@@ -91,6 +112,17 @@ export default function SettingsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!settings) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
+        <div className="text-center">
+          <p className="text-red-400 mb-4">Failed to load settings</p>
+          <Link href="/" className="text-blue-400 hover:underline">Back to Home</Link>
+        </div>
       </div>
     );
   }
@@ -111,6 +143,20 @@ export default function SettingsPage() {
           <h1 className="text-2xl font-bold text-white">Schedule Settings</h1>
         </div>
 
+        {/* Warning when settings unavailable from device */}
+        {settingsUnavailable && (
+          <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-xl p-4 mb-4">
+            <div className="flex gap-3">
+              <svg className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <p className="text-yellow-400 text-sm">
+                Could not load current settings from device. Showing defaults. The device may be offline or still starting up.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Partial Open Section */}
         <div className="bg-slate-800 rounded-2xl p-6 mb-4 border border-slate-700">
           <h2 className="text-lg font-semibold text-white mb-4">Partial Open</h2>
@@ -127,7 +173,7 @@ export default function SettingsPage() {
                     type="number"
                     min="0"
                     max="23"
-                    value={settings.partialHour}
+                    value={settings.partialHour ?? 7}
                     onChange={(e) => setSettings({ ...settings, partialHour: parseInt(e.target.value) || 0 })}
                     className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -139,7 +185,7 @@ export default function SettingsPage() {
                     type="number"
                     min="0"
                     max="59"
-                    value={settings.partialMinute}
+                    value={settings.partialMinute ?? 0}
                     onChange={(e) => setSettings({ ...settings, partialMinute: parseInt(e.target.value) || 0 })}
                     className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -153,13 +199,13 @@ export default function SettingsPage() {
 
             <div>
               <label className="block text-slate-400 text-sm mb-2">
-                Open Duration: {settings.partialSeconds}s ({calculatePercentage(settings.partialSeconds)}%)
+                Open Duration: {settings.partialSeconds ?? 20}s ({calculatePercentage(settings.partialSeconds)}%)
               </label>
               <input
                 type="range"
                 min="1"
                 max="40"
-                value={settings.partialSeconds}
+                value={settings.partialSeconds ?? 20}
                 onChange={(e) => setSettings({ ...settings, partialSeconds: parseInt(e.target.value) })}
                 className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
               />
@@ -187,7 +233,7 @@ export default function SettingsPage() {
                   type="number"
                   min="0"
                   max="23"
-                  value={settings.fullHour}
+                  value={settings.fullHour ?? 9}
                   onChange={(e) => setSettings({ ...settings, fullHour: parseInt(e.target.value) || 0 })}
                   className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -199,7 +245,7 @@ export default function SettingsPage() {
                   type="number"
                   min="0"
                   max="59"
-                  value={settings.fullMinute}
+                  value={settings.fullMinute ?? 30}
                   onChange={(e) => setSettings({ ...settings, fullMinute: parseInt(e.target.value) || 0 })}
                   className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
