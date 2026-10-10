@@ -254,3 +254,6 @@ cover:
     has_built_in_endstop: true
     # Show both open/close buttons since position is estimated.
     assumed_state: true
+
+web_server:
+  port: 80
