@@ -1,11 +1,10 @@
 # =============================================================================
-# Dooya DC1600 remote CAPTURE node — ESP32 DevKit V1 (30-pin) + CC1101 433 MHz
+# Dooya DC1600 CAPTURE + TRANSMIT node — ESP32 DevKit V1 (30-pin) + CC1101 433 MHz
 # =============================================================================
 #
-# Purpose: listen for Dooya RF frames from a physical DC1600 (or compatible)
-# remote and dump id / channel / button / check in the ESPHome logs so you can
-# clone (re-transmit) those values later. This does NOT pair with the motor;
-# it only captures what the remote already sends.
+# Purpose: capture RF codes from a Dooya DC1600 remote AND transmit cloned
+# commands to control curtains from Home Assistant. This does NOT pair with the
+# motor; it clones existing remote codes.
 #
 # Hardware (VERIFY SILKSCREEN — DevKit V1 pin labels vary by clone):
 #   ESP32 DevKit V1 30-pin  +  CC1101 8-pin 433 MHz module
@@ -20,7 +19,7 @@
 #   SCK / CLK   ->  GPIO18
 #   MOSI        ->  GPIO23
 #   MISO        ->  GPIO19
-#   CSN / CS    ->  GPIO5
+#   CSN / CS    ->  GPIO5   (strapping pin warning suppressed; wiring done)
 #   GDO0        ->  GPIO4   (remote_transmitter data)
 #   GDO2        ->  GPIO16  (remote_receiver data)
 #
@@ -29,17 +28,18 @@
 #
 # Secrets (create secrets.yaml alongside this file, or use REPLACE_ME below):
 #   wifi_ssid, wifi_password
-#   api_encryption_key   # openssl rand -base64 32
-#   ota_password
+#   api_encryption_key   # openssl rand -base64 32  (also used for OTA)
 #
-# After capture: uncomment the button / service examples at the bottom and fill
-# in id / channel / button / check from the Dooya dump lines in the log.
+# Captured codes (DC1600 remote, channel 5):
+#   id: 0x009C4B85, channel: 5
+#   OPEN:  button 1, check 1
+#   STOP:  button 5, check 5
+#   CLOSE: button 3, check 3
 # =============================================================================
 
 esphome:
   name: dooya-dc1600-capture
   friendly_name: "Dooya DC1600 Capture"
-  # Enter RX on boot so frames are received immediately (not only after TX).
   on_boot:
     priority: -100
     then:
@@ -51,49 +51,22 @@ esp32:
     type: esp-idf
 
 # --- Network / API / OTA -----------------------------------------------------
-# Prefer !secret values. If you do not use secrets.yaml, replace the
-# REPLACE_ME placeholders below and remove the !secret lines.
 
 wifi:
   ssid: !secret wifi_ssid          # or: "REPLACE_ME_WIFI_SSID"
   password: !secret wifi_password  # or: "REPLACE_ME_WIFI_PASSWORD"
-  # Optional fallback AP if WiFi fails:
-  # ap:
-  #   ssid: "dooya-dc1600-capture-fallback"
-  #   password: "REPLACE_ME_AP_PASSWORD"
-
-# captive_portal:  # uncomment if using wifi.ap fallback
 
 logger:
-  # remote_receiver dumps (including `dooya`) appear at DEBUG+.
-  # Use VERBOSE for maximum RF debug noise while capturing.
   level: DEBUG
-  # level: VERBOSE
 
 api:
   encryption:
     key: !secret api_encryption_key  # or: "REPLACE_ME_BASE64_32_BYTES"
-  # Optional: HA-callable service after you know capture values (see bottom).
-  # services:
-  #   - service: transmit_dooya
-  #     variables:
-  #       dooya_id: int
-  #       channel: int
-  #       btn: int
-  #       check: int
-  #     then:
-  #       - remote_transmitter.transmit_dooya:
-  #           id: !lambda "return (uint32_t) dooya_id;"
-  #           channel: !lambda "return (uint8_t) channel;"
-  #           button: !lambda "return (uint8_t) btn;"
-  #           check: !lambda "return (uint8_t) check;"
-  #           repeat:
-  #             times: 5
-  #             wait_time: 1ms
 
 ota:
   - platform: esphome
-    password: !secret ota_password  # or: "REPLACE_ME_OTA_PASSWORD"
+    # Encryption reuses the API key; no separate password needed.
+    encryption:
 
 # --- SPI + CC1101 (native, async ASK/OOK) ------------------------------------
 
@@ -103,18 +76,16 @@ spi:
   miso_pin: GPIO19
 
 cc1101:
-  cs_pin: GPIO5
+  cs_pin:
+    number: GPIO5
+    ignore_strapping_warning: true  # wiring already done on GPIO5
   frequency: 433.92MHz
   modulation_type: ASK/OOK
-  # Defaults that work well for Dooya (match ESPHome / ha-dooya reference):
-  # output_power: 10
-  # symbol_rate: 5000
-  # filter_bandwidth: 203kHz
 
-# Dual-pin wiring (recommended): GDO0 = TX, GDO2 = RX
 remote_transmitter:
   pin: GPIO4  # GDO0
   carrier_duty_percent: 100%
+  non_blocking: true  # ESP32 RMT default; set explicitly to silence warning
   on_transmit:
     then:
       - cc1101.begin_tx
@@ -131,48 +102,98 @@ remote_receiver:
   idle: 7ms
 
 # =============================================================================
-# AFTER CAPTURE — uncomment and fill placeholders from log dumps
+# CAPTURED CODES — DC1600 remote, channel 5
 # =============================================================================
-# Look in logs for lines like:
-#   Received Dooya: id=0x001612E5 channel=142 button=12 check=3
-# Button codes are typically: OPEN/UP=1, CLOSE/DOWN=3, STOP=5
-# (confirm against your remote's dump — check may mirror button on press).
+# id: 0x009C4B85, channel: 5
+# OPEN:  button 1, check 1
+# STOP:  button 5, check 5
+# CLOSE: button 3, check 3
 #
-# Example entity buttons (replace REPLACE_ME_* with captured values):
-#
-# button:
-#   - platform: template
-#     name: "Curtain OPEN"
-#     on_press:
-#       - remote_transmitter.transmit_dooya:
-#           id: 0xREPLACE_ME_ID        # e.g. 0x001612E5
-#           channel: REPLACE_ME_CH     # e.g. 142
-#           button: 1                  # OPEN / UP
-#           check: REPLACE_ME_CHECK    # e.g. 1
-#           repeat:
-#             times: 5
-#             wait_time: 1ms
-#
-#   - platform: template
-#     name: "Curtain STOP"
-#     on_press:
-#       - remote_transmitter.transmit_dooya:
-#           id: 0xREPLACE_ME_ID
-#           channel: REPLACE_ME_CH
-#           button: 5                  # STOP
-#           check: REPLACE_ME_CHECK
-#           repeat:
-#             times: 5
-#             wait_time: 1ms
-#
-#   - platform: template
-#     name: "Curtain CLOSE"
-#     on_press:
-#       - remote_transmitter.transmit_dooya:
-#           id: 0xREPLACE_ME_ID
-#           channel: REPLACE_ME_CH
-#           button: 3                  # CLOSE / DOWN
-#           check: REPLACE_ME_CHECK
-#           repeat:
-#             times: 5
-#             wait_time: 1ms
+# Frames with check 12-15 seen at burst tail are long-press/held frames; ignored.
+# =============================================================================
+
+substitutions:
+  dooya_id: "0x009C4B85"
+  dooya_channel: "5"
+
+# --- Scripts (shared by buttons and cover) -----------------------------------
+
+script:
+  - id: transmit_open
+    then:
+      - remote_transmitter.transmit_dooya:
+          id: ${dooya_id}
+          channel: ${dooya_channel}
+          button: 1
+          check: 1
+          repeat:
+            times: 3
+            wait_time: 15ms
+
+  - id: transmit_stop
+    then:
+      - remote_transmitter.transmit_dooya:
+          id: ${dooya_id}
+          channel: ${dooya_channel}
+          button: 5
+          check: 5
+          repeat:
+            times: 3
+            wait_time: 15ms
+
+  - id: transmit_close
+    then:
+      - remote_transmitter.transmit_dooya:
+          id: ${dooya_id}
+          channel: ${dooya_channel}
+          button: 3
+          check: 3
+          repeat:
+            times: 3
+            wait_time: 15ms
+
+# --- Buttons (manual control from ESPHome web / HA) --------------------------
+
+button:
+  - platform: template
+    name: "Curtain Open"
+    icon: mdi:curtains
+    on_press:
+      - script.execute: transmit_open
+
+  - platform: template
+    name: "Curtain Stop"
+    icon: mdi:stop
+    on_press:
+      - script.execute: transmit_stop
+
+  - platform: template
+    name: "Curtain Close"
+    icon: mdi:curtains-closed
+    on_press:
+      - script.execute: transmit_close
+
+# --- Cover entity (proper HA cover with open/close/stop) ---------------------
+# time_based cover estimates position from travel time.
+# Measure your curtain's actual open/close duration and adjust below.
+
+cover:
+  - platform: time_based
+    name: "Curtains"
+    device_class: curtain
+
+    # PLACEHOLDER DURATIONS — measure your curtain travel time and update:
+    open_duration: 20s   # time for curtain to fully open
+    close_duration: 20s  # time for curtain to fully close
+
+    open_action:
+      - script.execute: transmit_open
+    close_action:
+      - script.execute: transmit_close
+    stop_action:
+      - script.execute: transmit_stop
+
+    # Motor has built-in end stops; no need to send stop at end of travel.
+    has_built_in_endstop: true
+    # Show both open/close buttons since position is estimated.
+    assumed_state: true
