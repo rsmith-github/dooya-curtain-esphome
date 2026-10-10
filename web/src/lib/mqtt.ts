@@ -63,7 +63,26 @@ export async function publishMessage(
   });
 }
 
+// Compute minimal wildcard patterns to cover a list of topics
+// EMQX Serverless free plan limits clients to 10 subscriptions
+function computeWildcardPatterns(topics: string[]): string[] {
+  // Group topics by their first two path segments and use wildcards
+  const prefixes = new Set<string>();
+  for (const topic of topics) {
+    const parts = topic.split("/");
+    if (parts.length >= 2) {
+      // Use first two segments + wildcard: "dooya/curtain/#", "dooya/schedule/#"
+      prefixes.add(`${parts[0]}/${parts[1]}/#`);
+    } else {
+      // Single-segment topic, subscribe directly
+      prefixes.add(topic);
+    }
+  }
+  return Array.from(prefixes);
+}
+
 // Read retained messages from multiple topics
+// Uses wildcard subscriptions to stay under EMQX's 10-subscription limit.
 // Returns as soon as messages stop arriving (settling) or timeout is reached.
 // Never blocks waiting for topics that may not have retained messages.
 export async function readRetainedMessages(
@@ -73,11 +92,14 @@ export async function readRetainedMessages(
     throw new Error("MQTT_BROKER not configured");
   }
 
+  const requestedTopics = new Set(topics);
+  const wildcardPatterns = computeWildcardPatterns(topics);
+
   return new Promise((resolve, reject) => {
     const url = `wss://${MQTT_BROKER}:${MQTT_PORT}/mqtt`;
     const client: MqttClient = mqtt.connect(url, getMqttOptions());
     const messages: Record<string, string> = {};
-    const receivedTopics = new Set<string>();
+    const receivedRequestedTopics = new Set<string>();
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
     let subscribeTime = 0;
 
@@ -108,12 +130,25 @@ export async function readRetainedMessages(
     };
 
     client.on("connect", () => {
-      client.subscribe(topics, { qos: 0 }, (err) => {
+      client.subscribe(wildcardPatterns, { qos: 0 }, (err, granted) => {
         if (err) {
+          console.error("MQTT subscribe error:", err.message);
           clearTimeout(maxTimeout);
           client.end(true);
           reject(err);
           return;
+        }
+        // Check for subscription failures in granted array
+        if (granted) {
+          const failed = granted.filter((g) => g.qos === 128);
+          if (failed.length > 0) {
+            const failedTopics = failed.map((g) => g.topic).join(", ");
+            console.error(`MQTT subscription rejected for: ${failedTopics}`);
+            clearTimeout(maxTimeout);
+            client.end(true);
+            reject(new Error(`Subscription rejected: ${failedTopics}`));
+            return;
+          }
         }
         subscribeTime = Date.now();
         // Don't start settle timer yet - wait for first message
@@ -121,20 +156,24 @@ export async function readRetainedMessages(
     });
 
     client.on("message", (topic, payload) => {
-      messages[topic] = payload.toString();
-      receivedTopics.add(topic);
-      
-      // Got all topics? Return immediately
-      if (receivedTopics.size >= topics.length) {
-        done();
-        return;
+      // Only keep messages for topics we actually requested
+      if (requestedTopics.has(topic)) {
+        messages[topic] = payload.toString();
+        receivedRequestedTopics.add(topic);
+        
+        // Got all requested topics? Return immediately
+        if (receivedRequestedTopics.size >= topics.length) {
+          done();
+          return;
+        }
       }
       
-      // Start/reset settle timer after each message
+      // Start/reset settle timer after any message (even non-requested ones indicate broker activity)
       resetSettleTimer();
     });
 
     client.on("error", (err) => {
+      console.error("MQTT client error:", err.message);
       clearTimeout(maxTimeout);
       if (settleTimer) clearTimeout(settleTimer);
       client.end(true);
