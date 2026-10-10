@@ -33,6 +33,12 @@ const parisienne = Parisienne({
 export const metadata: Metadata = {
   title: "Scope Promsri — Curtain Control",
   description: "Smart curtain control for Scope Promsri residence",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Curtains",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
