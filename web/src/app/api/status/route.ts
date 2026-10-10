@@ -42,9 +42,11 @@ export async function GET() {
 
     // Position tracking with confidence
     const positionKnown = messages[TOPICS.CURTAIN_POSITION_KNOWN] === "true";
-    const position = TOPICS.CURTAIN_POSITION in messages 
+    const rawPosition = TOPICS.CURTAIN_POSITION in messages 
       ? parseInt(messages[TOPICS.CURTAIN_POSITION], 10) 
       : null;
+    // Handle NaN from malformed payloads, and explicitly preserve 0 as valid
+    const position = rawPosition !== null && !Number.isNaN(rawPosition) ? rawPosition : null;
     const movement = messages[TOPICS.CURTAIN_MOVEMENT] || "stopped";
     const movementStartMs = TOPICS.CURTAIN_MOVEMENT_START_MS in messages
       ? parseInt(messages[TOPICS.CURTAIN_MOVEMENT_START_MS], 10)
@@ -53,7 +55,7 @@ export async function GET() {
     return NextResponse.json({
       online: messages[TOPICS.CURTAIN_AVAILABILITY] === "online",
       curtainState: messages[TOPICS.CURTAIN_STATE] || "unknown",
-      // Position with confidence
+      // Return position when known, including 0 (fully closed)
       position: positionKnown ? position : null,
       positionKnown,
       movement,

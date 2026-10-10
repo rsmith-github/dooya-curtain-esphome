@@ -195,19 +195,17 @@ export const TOPICS = {
   CURTAIN_MOVEMENT: "dooya/curtain/movement",
   CURTAIN_MOVEMENT_START_MS: "dooya/curtain/movement_start_ms",
 
-  // Schedule control
-  SCHEDULE_COMMAND: "dooya/schedule/command",
+  // Schedule control (state topic for reading)
   SCHEDULE_STATE: "dooya/schedule/state",
 
-  // Schedule settings
+  // Schedule settings (state topics for reading)
   PARTIAL_HOUR: "dooya/schedule/partial_hour",
-  PARTIAL_HOUR_SET: "dooya/schedule/partial_hour/set",
   PARTIAL_MINUTE: "dooya/schedule/partial_minute",
-  PARTIAL_MINUTE_SET: "dooya/schedule/partial_minute/set",
   PARTIAL_SECONDS: "dooya/schedule/partial_seconds",
-  PARTIAL_SECONDS_SET: "dooya/schedule/partial_seconds/set",
   FULL_HOUR: "dooya/schedule/full_hour",
-  FULL_HOUR_SET: "dooya/schedule/full_hour/set",
   FULL_MINUTE: "dooya/schedule/full_minute",
-  FULL_MINUTE_SET: "dooya/schedule/full_minute/set",
+  
+  // Combined schedule command topic (write only)
+  // Payloads: "ON", "OFF", "partial_hour=7", "full_minute=30", etc.
+  SCHEDULE_SET: "dooya/schedule/set",
 };
