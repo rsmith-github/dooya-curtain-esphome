@@ -130,6 +130,7 @@ mqtt:
   port: 8883
   username: !secret mqtt_username
   password: !secret mqtt_password
+  discovery: false  # Disable Home Assistant discovery to reduce MQTT overhead
 
   # EMQX Cloud Serverless uses DigiCert Global Root CA for TLS.
   # This certificate is required for ESP-IDF to validate the server.
@@ -172,7 +173,11 @@ mqtt:
     - delay: 1s
     - script.execute: publish_all_states
 
-  # Command topics for curtain control
+  # Command topics for curtain and schedule control
+  # Consolidated to stay under EMQX Serverless 10-subscription limit:
+  # - 1 switch + 5 numbers + 2 cover = 8 entity subscriptions (auto)
+  # - 2 on_message handlers (below)
+  # Total: 10 subscriptions (exactly at limit)
   on_message:
     - topic: dooya/curtain/command
       then:
@@ -185,60 +190,46 @@ mqtt:
               id(handle_close).execute();
             }
 
-    - topic: dooya/schedule/command
+    # Combined schedule topic - handles toggle (ON/OFF) and settings (key=value)
+    # e.g., "ON", "OFF", "partial_hour=7", "full_minute=30"
+    - topic: dooya/schedule/set
       then:
         - lambda: |-
-            if (x == "ON") {
+            std::string payload(x.c_str());
+            
+            // Handle toggle commands
+            if (payload == "ON") {
               id(schedule_enabled).turn_on();
-            } else if (x == "OFF") {
+              return;
+            } else if (payload == "OFF") {
               id(schedule_enabled).turn_off();
+              return;
             }
-
-    - topic: dooya/schedule/partial_hour/set
-      then:
-        - lambda: |-
-            int val = atoi(x.c_str());
-            if (val >= 0 && val <= 23) {
+            
+            // Handle settings (key=value format)
+            size_t eq = payload.find('=');
+            if (eq == std::string::npos) return;
+            
+            std::string key = payload.substr(0, eq);
+            int val = atoi(payload.substr(eq + 1).c_str());
+            
+            if (key == "partial_hour" && val >= 0 && val <= 23) {
               auto call = id(partial_open_hour).make_call();
               call.set_value(val);
               call.perform();
-            }
-
-    - topic: dooya/schedule/partial_minute/set
-      then:
-        - lambda: |-
-            int val = atoi(x.c_str());
-            if (val >= 0 && val <= 59) {
+            } else if (key == "partial_minute" && val >= 0 && val <= 59) {
               auto call = id(partial_open_minute).make_call();
               call.set_value(val);
               call.perform();
-            }
-
-    - topic: dooya/schedule/partial_seconds/set
-      then:
-        - lambda: |-
-            int val = atoi(x.c_str());
-            if (val >= 1 && val <= 40) {
+            } else if (key == "partial_seconds" && val >= 1 && val <= 40) {
               auto call = id(partial_open_seconds).make_call();
               call.set_value(val);
               call.perform();
-            }
-
-    - topic: dooya/schedule/full_hour/set
-      then:
-        - lambda: |-
-            int val = atoi(x.c_str());
-            if (val >= 0 && val <= 23) {
+            } else if (key == "full_hour" && val >= 0 && val <= 23) {
               auto call = id(full_open_hour).make_call();
               call.set_value(val);
               call.perform();
-            }
-
-    - topic: dooya/schedule/full_minute/set
-      then:
-        - lambda: |-
-            int val = atoi(x.c_str());
-            if (val >= 0 && val <= 59) {
+            } else if (key == "full_minute" && val >= 0 && val <= 59) {
               auto call = id(full_open_minute).make_call();
               call.set_value(val);
               call.perform();
@@ -602,7 +593,7 @@ switch:
     icon: mdi:calendar-clock
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
-    # Toggle from web UI, HA, or MQTT to enable/disable schedule automation.
+    # Toggle from web UI, HA, or MQTT (via dooya/schedule/command)
     on_turn_on:
       - mqtt.publish:
           topic: dooya/schedule/state
@@ -702,28 +693,7 @@ number:
           payload: !lambda "return to_string((int)x);"
           retain: true
 
-# --- Buttons (manual control from ESPHome web / HA) --------------------------
-
-button:
-  - platform: template
-    name: "Curtain Open"
-    icon: mdi:curtains
-    on_press:
-      - script.execute: handle_open
-
-  - platform: template
-    name: "Curtain Stop"
-    icon: mdi:stop
-    on_press:
-      - script.execute: handle_stop
-
-  - platform: template
-    name: "Curtain Close"
-    icon: mdi:curtains-closed
-    on_press:
-      - script.execute: handle_close
-
-# --- Cover entity (proper HA cover with open/close/stop) ---------------------
+# --- Cover entity (provides Open/Close/Stop in local web UI) -----------------
 # Note: The time_based cover's internal position estimate is separate from
 # our position tracking with confidence. The cover entity is kept for HA
 # compatibility but our MQTT position topics are the source of truth.
@@ -731,6 +701,7 @@ button:
 cover:
   - platform: time_based
     name: "Curtains"
+    id: curtain_cover
     device_class: curtain
 
     # Measured travel time: 40 seconds for full open/close.
