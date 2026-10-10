@@ -48,9 +48,6 @@ esphome:
     priority: -100
     then:
       - cc1101.begin_rx
-      # Publish all states to MQTT after boot (restored values don't trigger on_value)
-      - delay: 5s
-      - script.execute: publish_all_states
 
 esp32:
   board: esp32dev
@@ -124,6 +121,11 @@ mqtt:
     topic: dooya/curtain/availability
     payload: offline
     retain: true
+
+  # Publish all states when MQTT connects (restored values don't trigger on_value)
+  on_connect:
+    - delay: 1s
+    - script.execute: publish_all_states
 
   # Command topics for curtain control
   on_message:
