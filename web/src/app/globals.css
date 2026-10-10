@@ -1,26 +1,178 @@
 @import "tailwindcss";
 
+/* Scope Promsri Design Tokens */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light Mode (Default) */
+  --background: #F3EEE6;
+  --surface: #E6DDD0;
+  --card: #F8F5EF;
+  --border: #D9CFC1;
+  --text-primary: #1A211E;
+  --text-secondary: #77756D;
+  --deep-green: #1F3A33;
+  --jade: #4F7A6B;
+  --brass: #C9A46A;
+  --success: #5A9D73;
+  --error: #B85450;
+  --warning: #D4A84B;
+  
+  /* Curtain illustration colors */
+  --curtain-frame: #D9CFC1;
+  --curtain-panel: #E6DDD0;
+  --curtain-highlight: #4F7A6B;
+}
+
+[data-theme="dark"] {
+  --background: #0E1A17;
+  --surface: #172823;
+  --card: #1F3A33;
+  --border: #365047;
+  --text-primary: #F3EEE6;
+  --text-secondary: #D9CFC1;
+  --deep-green: #1F3A33;
+  --jade: #4F7A6B;
+  --brass: #C9A46A;
+  --success: #5A9D73;
+  --error: #CF6B67;
+  --warning: #D4A84B;
+  
+  /* Curtain illustration colors - dark mode */
+  --curtain-frame: #365047;
+  --curtain-panel: #1F3A33;
+  --curtain-highlight: #4F7A6B;
 }
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-deep-green: var(--deep-green);
+  --color-jade: var(--jade);
+  --color-brass: var(--brass);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  transition-timing-function: ease-in-out;
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography */
+.font-heading {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 400;
+}
+
+.font-label {
+  font-family: 'Jost', system-ui, sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+}
+
+.font-body {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 400;
+}
+
+.font-script {
+  font-family: var(--font-script), 'Parisienne', cursive;
+  font-weight: 400;
+}
+
+/* Tabular numbers for times and percentages */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbar for dark/light modes */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--jade);
+}
+
+/* Focus states */
+:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* Slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-track {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--brass);
+  margin-top: -7px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 200ms ease-in-out;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+
+input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--brass);
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
