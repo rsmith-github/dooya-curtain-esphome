@@ -1,13 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,34 +41,41 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-6 bg-[var(--background)]"
+      style={{ visibility: mounted ? "visible" : "hidden" }}
+    >
       <div className="w-full max-w-sm">
-        <div className="bg-slate-800 rounded-2xl shadow-xl p-8 border border-slate-700">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full mx-auto mb-4 flex items-center justify-center">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-white">Curtain Control</h1>
-            <p className="text-slate-400 mt-2">Enter password to continue</p>
-          </div>
+        {/* Header */}
+        <div className="text-center mb-12">
+          <h1 className="font-display text-3xl md:text-4xl font-medium text-[var(--deep-green)] tracking-tight">
+            Scope Promsri
+          </h1>
+          <p className="font-label text-xs uppercase tracking-[0.2em] text-[var(--text-secondary)] mt-2">
+            Curtain Control
+          </p>
+        </div>
 
+        {/* Login Card */}
+        <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
+              <label className="block font-label text-xs uppercase tracking-wide text-[var(--text-secondary)] mb-2">
+                Password
+              </label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                placeholder="Enter password"
+                className="w-full px-4 py-3 bg-[var(--surface)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] placeholder-[var(--text-secondary)] font-body text-sm focus:outline-none focus:ring-1 focus:ring-[var(--brass)] focus:border-[var(--brass)] transition-colors"
                 required
                 autoFocus
               />
             </div>
 
             {error && (
-              <div className="text-red-400 text-sm text-center bg-red-900/20 py-2 rounded-lg">
+              <div className="text-[var(--error)] text-sm text-center bg-[var(--error)]/10 py-2 px-4 rounded-lg font-body">
                 {error}
               </div>
             )}
@@ -71,12 +83,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 px-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-600 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              className="w-full py-3 px-4 bg-[var(--brass)] text-white font-label text-sm uppercase tracking-wide rounded-lg hover:bg-[var(--brass-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--brass)] focus:ring-offset-2 focus:ring-offset-[var(--card)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {loading ? "Logging in..." : "Login"}
+              {loading ? "Logging in..." : "Continue"}
             </button>
           </form>
         </div>
+
+        {/* Footer */}
+        <p className="text-center text-[var(--text-secondary)] font-body text-xs mt-8">
+          Smart home automation
+        </p>
       </div>
     </div>
   );
