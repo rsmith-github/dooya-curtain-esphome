@@ -162,8 +162,8 @@ export default function HomePage() {
   }
 
   function getDisplayPosition(): number | null {
-    // Only return position if known with confidence
-    if (status?.positionKnown && status?.position !== null) {
+    // Return position when known with confidence (including 0% for fully closed)
+    if (status?.positionKnown === true && typeof status?.position === "number") {
       return status.position;
     }
     return null;
