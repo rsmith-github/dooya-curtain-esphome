@@ -7,7 +7,7 @@ import Link from "next/link";
 interface Status {
   online: boolean;
   curtainState: string;
-  scheduleEnabled: boolean;
+  scheduleEnabled: boolean | null;
 }
 
 export default function HomePage() {
@@ -68,7 +68,8 @@ export default function HomePage() {
   }
 
   async function toggleSchedule() {
-    if (!status) return;
+    // Don't allow toggling if state is unknown (null)
+    if (!status || status.scheduleEnabled === null) return;
     setActionLoading("schedule");
     setError("");
 
@@ -209,21 +210,31 @@ export default function HomePage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-white font-semibold">Morning Schedule</h3>
-              <p className="text-slate-400 text-sm">Auto-open at scheduled times</p>
+              <p className="text-slate-400 text-sm">
+                {status?.scheduleEnabled === null 
+                  ? "Loading state..." 
+                  : "Auto-open at scheduled times"}
+              </p>
             </div>
-            <button
-              onClick={toggleSchedule}
-              disabled={actionLoading === "schedule"}
-              className={`relative w-14 h-8 rounded-full transition-colors ${
-                status?.scheduleEnabled ? "bg-blue-500" : "bg-slate-600"
-              }`}
-            >
-              <div
-                className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
-                  status?.scheduleEnabled ? "translate-x-7" : "translate-x-1"
+            {status?.scheduleEnabled === null ? (
+              <div className="w-14 h-8 bg-slate-700 rounded-full flex items-center justify-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-slate-400 border-t-transparent"></div>
+              </div>
+            ) : (
+              <button
+                onClick={toggleSchedule}
+                disabled={actionLoading === "schedule"}
+                className={`relative w-14 h-8 rounded-full transition-colors ${
+                  status?.scheduleEnabled ? "bg-blue-500" : "bg-slate-600"
                 }`}
-              ></div>
-            </button>
+              >
+                <div
+                  className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                    status?.scheduleEnabled ? "translate-x-7" : "translate-x-1"
+                  }`}
+                ></div>
+              </button>
+            )}
           </div>
         </div>
 
