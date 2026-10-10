@@ -3,8 +3,9 @@
 # =============================================================================
 #
 # Purpose: capture RF codes from a Dooya DC1600 remote AND transmit cloned
-# commands to control curtains from Home Assistant. This does NOT pair with the
-# motor; it clones existing remote codes.
+# commands to control curtains. Works standalone (no Home Assistant required)
+# with a built-in morning schedule. This does NOT pair with the motor; it
+# clones existing remote codes.
 #
 # Hardware (VERIFY SILKSCREEN — DevKit V1 pin labels vary by clone):
 #   ESP32 DevKit V1 30-pin  +  CC1101 8-pin 433 MHz module
@@ -67,6 +68,51 @@ ota:
   - platform: esphome
     # Encryption reuses the API key; no separate password needed.
     encryption:
+
+web_server:
+  port: 80
+
+# --- Time source (standalone schedule, no Home Assistant) --------------------
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: Asia/Bangkok
+    servers:
+      - 0.pool.ntp.org
+      - 1.pool.ntp.org
+      - 2.pool.ntp.org
+    on_time:
+      # 07:00 daily: open curtains to ~50% (halfway).
+      # Assumption: curtain is normally fully closed at 07:00.
+      # Because the time_based cover can't know true position after reboot or
+      # manual remote use, we send OPEN for 20s (half of 40s full travel), then
+      # STOP. If already open, motor stays at current position after STOP.
+      - seconds: 0
+        minutes: 0
+        hours: 7
+        then:
+          - if:
+              condition:
+                switch.is_on: schedule_enabled
+              then:
+                - logger.log: "Schedule: 07:00 — opening to 50%"
+                - script.execute: transmit_open
+                - delay: 20s
+                - script.execute: transmit_stop
+
+      # 09:30 daily: fully open curtains.
+      # Just sends OPEN; motor has built-in endstop so excess travel is safe.
+      - seconds: 0
+        minutes: 30
+        hours: 9
+        then:
+          - if:
+              condition:
+                switch.is_on: schedule_enabled
+              then:
+                - logger.log: "Schedule: 09:30 — opening fully"
+                - script.execute: transmit_open
 
 # --- SPI + CC1101 (native, async ASK/OOK) ------------------------------------
 
@@ -152,6 +198,17 @@ script:
             times: 3
             wait_time: 15ms
 
+# --- Schedule toggle (persisted across reboots) ------------------------------
+
+switch:
+  - platform: template
+    name: "Morning Schedule"
+    id: schedule_enabled
+    icon: mdi:calendar-clock
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    # Toggle from web UI or HA to enable/disable 07:00 and 09:30 automation.
+
 # --- Buttons (manual control from ESPHome web / HA) --------------------------
 
 button:
@@ -182,9 +239,9 @@ cover:
     name: "Curtains"
     device_class: curtain
 
-    # PLACEHOLDER DURATIONS — measure your curtain travel time and update:
-    open_duration: 20s   # time for curtain to fully open
-    close_duration: 20s  # time for curtain to fully close
+    # Measured travel time: 40 seconds for full open/close.
+    open_duration: 40s
+    close_duration: 40s
 
     open_action:
       - script.execute: transmit_open
