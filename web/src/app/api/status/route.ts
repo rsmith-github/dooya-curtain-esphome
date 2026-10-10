@@ -19,6 +19,10 @@ export async function GET() {
     const messages = await readRetainedMessages([
       TOPICS.CURTAIN_AVAILABILITY,
       TOPICS.CURTAIN_STATE,
+      TOPICS.CURTAIN_POSITION,
+      TOPICS.CURTAIN_POSITION_KNOWN,
+      TOPICS.CURTAIN_MOVEMENT,
+      TOPICS.CURTAIN_MOVEMENT_START_MS,
       TOPICS.SCHEDULE_STATE,
       TOPICS.PARTIAL_HOUR,
       TOPICS.PARTIAL_MINUTE,
@@ -36,9 +40,24 @@ export async function GET() {
       TOPICS.FULL_HOUR in messages ||
       TOPICS.FULL_MINUTE in messages;
 
+    // Position tracking with confidence
+    const positionKnown = messages[TOPICS.CURTAIN_POSITION_KNOWN] === "true";
+    const position = TOPICS.CURTAIN_POSITION in messages 
+      ? parseInt(messages[TOPICS.CURTAIN_POSITION], 10) 
+      : null;
+    const movement = messages[TOPICS.CURTAIN_MOVEMENT] || "stopped";
+    const movementStartMs = TOPICS.CURTAIN_MOVEMENT_START_MS in messages
+      ? parseInt(messages[TOPICS.CURTAIN_MOVEMENT_START_MS], 10)
+      : null;
+
     return NextResponse.json({
       online: messages[TOPICS.CURTAIN_AVAILABILITY] === "online",
       curtainState: messages[TOPICS.CURTAIN_STATE] || "unknown",
+      // Position with confidence
+      position: positionKnown ? position : null,
+      positionKnown,
+      movement,
+      movementStartMs,
       // Return null if we didn't receive the schedule state (don't assume OFF)
       scheduleEnabled: scheduleState === undefined ? null : scheduleState === "ON",
       settings: hasScheduleSettings ? {
