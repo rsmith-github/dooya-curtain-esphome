@@ -496,11 +496,12 @@ script:
             }
             id(curtain_position) = new_pos;
             id(position_known) = true;
-            ESP_LOGI("position", "STOP after %dms (%.0f%% travel) - position KNOWN at %.0f%%",
-                     elapsed_ms, travel_percent, new_pos);
+            ESP_LOGI("position", "STOP after %lums (%.0f%% travel) - position KNOWN at %.0f%%",
+                     (unsigned long)elapsed_ms, travel_percent, new_pos);
           } else {
             // Started from unknown position - still unknown
-            ESP_LOGI("position", "STOP after %dms - position still UNKNOWN");
+            ESP_LOGI("position", "STOP after %lums - position still UNKNOWN",
+                     (unsigned long)elapsed_ms);
           }
           
           id(movement_direction) = 0;
