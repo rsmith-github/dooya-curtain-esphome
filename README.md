@@ -19,6 +19,8 @@ A ready-to-flash ESPHome configuration that captures RF codes from a Dooya DC160
 |------|---------|
 | `dooya-dc1600-capture.yaml` | ESPHome capture + transmit node config |
 | `secrets.yaml` | **Create this yourself** (not in repo) |
+| `web/` | Next.js web app for remote control via MQTT |
+| `web/.env.example` | Template for web app environment variables |
 
 ## Wiring (3V3 only — never 5V!)
 
@@ -43,6 +45,11 @@ Create `secrets.yaml` next to the YAML (or in your ESPHome config directory):
 wifi_ssid: "YourSSID"
 wifi_password: "YourPassword"
 api_encryption_key: "paste-from-dashboard-or-openssl-rand-base64-32"
+
+# MQTT broker (EMQX Cloud Serverless or compatible)
+mqtt_broker: "abc123.ala.us-east-1.emqxsl.com"
+mqtt_username: "your-mqtt-username"
+mqtt_password: "your-mqtt-password"
 ```
 
 The API encryption key is also used for OTA updates (no separate OTA password needed).
@@ -104,8 +111,8 @@ After flashing the updated configuration:
 
 The ESP32 runs a standalone morning schedule (no Home Assistant required):
 
-| Time | Action |
-|------|--------|
+| Time (default) | Action |
+|----------------|--------|
 | 07:00 | Open curtains to ~50% (halfway) |
 | 09:30 | Open curtains fully |
 
@@ -113,18 +120,135 @@ The ESP32 runs a standalone morning schedule (no Home Assistant required):
 
 - Uses SNTP to sync time on boot (servers: `pool.ntp.org`)
 - Timezone: `Asia/Bangkok` (UTC+7)
-- 07:00 action: sends OPEN, waits 20 seconds, then sends STOP (half of 40s full travel)
-- 09:30 action: sends OPEN (motor has built-in endstop)
-- Curtains never close automatically; closing is always manual via remote or web UI
+- Partial open: sends OPEN, waits configured seconds (default 20s = 50%), then sends STOP
+- Full open: sends OPEN (motor has built-in endstop)
+- Curtains never close automatically; closing is always manual via remote, web UI, or app
+
+**Configurable settings:**
+
+All schedule settings are stored persistently on the ESP32 and survive reboots:
+
+| Setting | Range | Default | Description |
+|---------|-------|---------|-------------|
+| Partial Open Hour | 0-23 | 7 | Hour for partial open |
+| Partial Open Minute | 0-59 | 0 | Minute for partial open |
+| Partial Open Seconds | 1-40 | 20 | Duration to open (20s = 50% of 40s travel) |
+| Full Open Hour | 0-23 | 9 | Hour for full open |
+| Full Open Minute | 0-59 | 30 | Minute for full open |
+
+Adjust these via:
+- **ESPHome local web UI** (http://device-ip) — number sliders
+- **Web app Settings page** — if deployed
+- **MQTT** — publish to `dooya/schedule/*/set` topics
+- **Home Assistant** — number entities (if connected)
 
 **Assumptions:**
 
-- The curtain is normally fully closed at 07:00. If already open, the motor reaches its endstop quickly and stops; the 20-second wait still completes before STOP is sent.
+- The curtain is normally fully closed at partial open time. If already open, the motor reaches its endstop quickly and stops; the configured wait still completes before STOP is sent.
 - After a reboot, the time-based cover doesn't know the true position, so the schedule sends raw RF commands rather than using the cover's position logic.
 
 **Enable/Disable:**
 
-A "Morning Schedule" switch is exposed in the ESPHome web UI (and Home Assistant, if connected). Toggle it off to disable the automatic schedule. The setting persists across reboots (`RESTORE_DEFAULT_ON`).
+A "Morning Schedule" switch is exposed in the ESPHome web UI, the remote web app, and Home Assistant (if connected). Toggle it off to disable the automatic schedule. The setting persists across reboots (`RESTORE_DEFAULT_ON`).
+
+## MQTT Setup (EMQX Cloud Serverless)
+
+The ESP32 connects to an MQTT broker for remote control from the web app. [EMQX Cloud Serverless](https://www.emqx.com/en/cloud/serverless-mqtt) offers a free tier with 1M session minutes/month.
+
+### 1. Create a Deployment
+
+1. Sign up at [EMQX Cloud Console](https://cloud.emqx.com/)
+2. Click **New Deployment** → **Serverless**
+3. Choose a region close to you
+4. Wait for the deployment to start (takes ~1 minute)
+
+### 2. Get Connection Details
+
+1. Go to **Overview** in your deployment
+2. Copy the **Connection Address** (e.g., `abc123.ala.us-east-1.emqxsl.com`)
+3. Note the ports: `8883` (MQTTS) and `8084` (WSS)
+
+### 3. Create Authentication
+
+1. Go to **Access Control** → **Authentication**
+2. Click **Add**
+3. Enter a username and password
+4. Click **Confirm**
+
+### 4. Update secrets.yaml
+
+Add to your `secrets.yaml`:
+
+```yaml
+mqtt_broker: "abc123.ala.us-east-1.emqxsl.com"
+mqtt_username: "your-username"
+mqtt_password: "your-password"
+```
+
+### 5. Reflash the ESP32
+
+```bash
+esphome run dooya-dc1600-capture.yaml --device 192.168.1.168
+```
+
+Replace `192.168.1.168` with your ESP32's IP address (for OTA update over Wi-Fi).
+
+## Web App Deployment (Vercel)
+
+A Next.js web app in `web/` provides remote curtain control from any browser.
+
+### Features
+
+- Mobile-first, modern UI
+- Big Open / Stop / Close buttons
+- Device online/offline indicator
+- Morning schedule toggle
+- Settings page for schedule times
+- Password-protected login
+- MQTT credentials stay server-side
+
+### Deploy to Vercel
+
+1. **Import the GitHub repo** at [vercel.com/new](https://vercel.com/new)
+
+2. **Set Root Directory** to `web`
+
+3. **Add Environment Variables:**
+
+   | Variable | Description |
+   |----------|-------------|
+   | `APP_PASSWORD` | Password to log in to the web UI |
+   | `SESSION_SECRET` | Min 32 chars; generate with `openssl rand -base64 32` |
+   | `MQTT_BROKER` | Your EMQX address (e.g., `abc123.ala.us-east-1.emqxsl.com`) |
+   | `MQTT_USERNAME` | EMQX authentication username |
+   | `MQTT_PASSWORD` | EMQX authentication password |
+   | `MQTT_WSS_PORT` | WebSocket port (default: `8084`) |
+
+4. **Deploy** — Vercel builds and hosts the app
+
+5. **Log in** at your Vercel URL with the `APP_PASSWORD`
+
+### MQTT Topics
+
+The ESP32 and web app communicate via these MQTT topics:
+
+| Topic | Direction | Payload | Description |
+|-------|-----------|---------|-------------|
+| `dooya/curtain/command` | → ESP32 | `OPEN`, `STOP`, `CLOSE` | Curtain commands |
+| `dooya/curtain/state` | ← ESP32 | `opening`, `stopped`, `closing` | Last action (retained) |
+| `dooya/curtain/availability` | ← ESP32 | `online`, `offline` | Device status (retained) |
+| `dooya/schedule/command` | → ESP32 | `ON`, `OFF` | Enable/disable schedule |
+| `dooya/schedule/state` | ← ESP32 | `ON`, `OFF` | Schedule status (retained) |
+| `dooya/schedule/partial_hour` | ← ESP32 | `0`-`23` | Partial open hour (retained) |
+| `dooya/schedule/partial_hour/set` | → ESP32 | `0`-`23` | Set partial open hour |
+| `dooya/schedule/partial_minute` | ← ESP32 | `0`-`59` | Partial open minute (retained) |
+| `dooya/schedule/partial_minute/set` | → ESP32 | `0`-`59` | Set partial open minute |
+| `dooya/schedule/partial_seconds` | ← ESP32 | `1`-`40` | Partial open duration (retained) |
+| `dooya/schedule/partial_seconds/set` | → ESP32 | `1`-`40` | Set partial open duration |
+| `dooya/schedule/full_hour` | ← ESP32 | `0`-`23` | Full open hour (retained) |
+| `dooya/schedule/full_hour/set` | → ESP32 | `0`-`23` | Set full open hour |
+| `dooya/schedule/full_minute` | ← ESP32 | `0`-`59` | Full open minute (retained) |
+| `dooya/schedule/full_minute/set` | → ESP32 | `0`-`59` | Set full open minute |
 
 ## Capturing Your Own Codes
 
@@ -156,6 +280,9 @@ If you need to capture codes from a different remote:
 - [ESPHome Remote Receiver](https://esphome.io/components/remote_receiver.html)
 - [ESPHome Time-Based Cover](https://esphome.io/components/cover/time_based/)
 - [ESPHome Time / SNTP](https://esphome.io/components/time/sntp.html)
+- [ESPHome MQTT Component](https://esphome.io/components/mqtt.html)
+- [EMQX Cloud Serverless](https://www.emqx.com/en/cloud/serverless-mqtt)
+- [EMQX Cloud Connection Guide](https://docs.emqx.com/en/cloud/latest/deployments/port_guide_serverless.html)
 
 ## License
 
