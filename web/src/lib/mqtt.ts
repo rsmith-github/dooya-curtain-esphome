@@ -58,6 +58,8 @@ export async function publishMessage(
 }
 
 // Read retained messages from multiple topics
+// Returns as soon as messages stop arriving (settling) or timeout is reached.
+// Never blocks waiting for topics that may not have retained messages.
 export async function readRetainedMessages(
   topics: string[]
 ): Promise<Record<string, string>> {
@@ -70,37 +72,60 @@ export async function readRetainedMessages(
     const client: MqttClient = mqtt.connect(url, getMqttOptions());
     const messages: Record<string, string> = {};
     const receivedTopics = new Set<string>();
+    let settleTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const timeout = setTimeout(() => {
+    // Maximum time to wait overall
+    const maxTimeout = setTimeout(() => {
+      if (settleTimer) clearTimeout(settleTimer);
       client.end(true);
-      // Return whatever we got, even if incomplete
       resolve(messages);
-    }, 5000);
+    }, 3000);
+
+    // After receiving a message, wait briefly for more before resolving
+    // This handles the case where retained messages arrive in quick succession
+    const resetSettleTimer = () => {
+      if (settleTimer) clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        clearTimeout(maxTimeout);
+        client.end();
+        resolve(messages);
+      }, 500); // 500ms settle time - if no new messages, we're done
+    };
 
     client.on("connect", () => {
       client.subscribe(topics, { qos: 0 }, (err) => {
         if (err) {
-          clearTimeout(timeout);
+          clearTimeout(maxTimeout);
+          if (settleTimer) clearTimeout(settleTimer);
           client.end(true);
           reject(err);
+          return;
         }
+        // Start settle timer after subscription - retained messages should arrive quickly
+        resetSettleTimer();
       });
     });
 
     client.on("message", (topic, payload) => {
       messages[topic] = payload.toString();
       receivedTopics.add(topic);
-
-      // Check if we got all topics
+      
+      // Got all topics? Return immediately
       if (receivedTopics.size >= topics.length) {
-        clearTimeout(timeout);
+        clearTimeout(maxTimeout);
+        if (settleTimer) clearTimeout(settleTimer);
         client.end();
         resolve(messages);
+        return;
       }
+      
+      // Reset settle timer on each message
+      resetSettleTimer();
     });
 
     client.on("error", (err) => {
-      clearTimeout(timeout);
+      clearTimeout(maxTimeout);
+      if (settleTimer) clearTimeout(settleTimer);
       client.end(true);
       reject(err);
     });
