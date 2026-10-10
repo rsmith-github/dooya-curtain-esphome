@@ -48,6 +48,9 @@ esphome:
     priority: -100
     then:
       - cc1101.begin_rx
+      # Publish all states to MQTT after boot (restored values don't trigger on_value)
+      - delay: 5s
+      - script.execute: publish_all_states
 
 esp32:
   board: esp32dev
@@ -333,6 +336,35 @@ script:
     then:
       - delay: !lambda "return (int)(id(partial_open_seconds).state * 1000);"
       - script.execute: transmit_stop
+
+  # Publish all states to MQTT (called on boot after restore)
+  - id: publish_all_states
+    then:
+      - mqtt.publish:
+          topic: dooya/schedule/state
+          payload: !lambda "return id(schedule_enabled).state ? \"ON\" : \"OFF\";"
+          retain: true
+      - mqtt.publish:
+          topic: dooya/schedule/partial_hour
+          payload: !lambda "return to_string((int)id(partial_open_hour).state);"
+          retain: true
+      - mqtt.publish:
+          topic: dooya/schedule/partial_minute
+          payload: !lambda "return to_string((int)id(partial_open_minute).state);"
+          retain: true
+      - mqtt.publish:
+          topic: dooya/schedule/partial_seconds
+          payload: !lambda "return to_string((int)id(partial_open_seconds).state);"
+          retain: true
+      - mqtt.publish:
+          topic: dooya/schedule/full_hour
+          payload: !lambda "return to_string((int)id(full_open_hour).state);"
+          retain: true
+      - mqtt.publish:
+          topic: dooya/schedule/full_minute
+          payload: !lambda "return to_string((int)id(full_open_minute).state);"
+          retain: true
+      - logger.log: "Published all states to MQTT"
 
 # --- Schedule toggle (persisted across reboots) ------------------------------
 
