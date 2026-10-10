@@ -30,6 +30,9 @@
 # Secrets (create secrets.yaml alongside this file, or use REPLACE_ME below):
 #   wifi_ssid, wifi_password
 #   api_encryption_key   # openssl rand -base64 32  (also used for OTA)
+#   mqtt_broker          # e.g. abc123.ala.us-east-1.emqxsl.com (EMQX Cloud Serverless)
+#   mqtt_username        # EMQX Cloud authentication username
+#   mqtt_password        # EMQX Cloud authentication password
 #
 # Captured codes (DC1600 remote, channel 5):
 #   id: 0x009C4B85, channel: 5
@@ -72,6 +75,128 @@ ota:
 web_server:
   port: 80
 
+# --- MQTT (EMQX Cloud Serverless, TLS on port 8883) --------------------------
+# Enables remote control from a public website without Home Assistant.
+# Broker is configurable via secrets so you can swap to another provider.
+
+mqtt:
+  id: mqtt_client
+  broker: !secret mqtt_broker
+  port: 8883
+  username: !secret mqtt_username
+  password: !secret mqtt_password
+
+  # EMQX Cloud Serverless uses DigiCert Global Root CA for TLS.
+  # This certificate is required for ESP-IDF to validate the server.
+  certificate_authority: |
+    -----BEGIN CERTIFICATE-----
+    MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh
+    MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+    d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBD
+    QTAeFw0wNjExMTAwMDAwMDBaFw0zMTExMTAwMDAwMDBaMGExCzAJBgNVBAYTAlVT
+    MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j
+    b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IENBMIIBIjANBgkqhkiG
+    9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4jvhEXLeqKTTo1eqUKKPC3eQyaKl7hLOllsB
+    CSDMAZOnTjC3U/dDxGkAV53ijSLdhwZAAIEJzs4bg7/fzTtxRuLWZscFs3YnFo97
+    nh6Vfe63SKMI2tavegw5BmV/Sl0fvBf4q77uKNd0f3p4mVmFaG5cIzJLv07A6Fpt
+    43C/dxC//AH2hdmoRBBYMql1GNXRor5H4idq9Joz+EkIYIvUX7Q6hL+hqkpMfT7P
+    T19sdl6gSzeRntwi5m3OFBqOasv+zbMUZBfHWymeMr/y7vrTC0LUq7dBMtoM1O/4
+    gdW7jVg/tRvoSSiicNoxBN33shbyTApOB6jtSj1etX+jkMOvJwIDAQABo2MwYTAO
+    BgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUA95QNVbR
+    TLtm8KPiGxvDl7I90VUwHwYDVR0jBBgwFoAUA95QNVbRTLtm8KPiGxvDl7I90VUw
+    DQYJKoZIhvcNAQEFBQADggEBAMucN6pIExIK+t1EnE9SsPTfrgT1eXkIoyQY/Esr
+    hMAtudXH/vTBH1jLuG2cenTnmCmrEbXjcKChzUyImZOMkXDiqw8cvpOp/2PV5Adg
+    06O/nVsJ8dWO41P0jmP6P6fbtGbfYmbW0W5BjfIttep3Sp+dWOIrWcBAI+0tKIJF
+    PnlUkiaY4IBIqDfv8NZ5YBberOgOzW6sRBc4L0na4UU+Krk2U886UAb3LujEV0ls
+    YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk
+    CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=
+    -----END CERTIFICATE-----
+
+  # Availability (birth/will messages, retained)
+  birth_message:
+    topic: dooya/curtain/availability
+    payload: online
+    retain: true
+  will_message:
+    topic: dooya/curtain/availability
+    payload: offline
+    retain: true
+
+  # Command topics for curtain control
+  on_message:
+    - topic: dooya/curtain/command
+      then:
+        - lambda: |-
+            if (x == "OPEN") {
+              id(transmit_open).execute();
+              id(mqtt_client).publish("dooya/curtain/state", "opening", 0, true);
+            } else if (x == "STOP") {
+              id(transmit_stop).execute();
+              id(mqtt_client).publish("dooya/curtain/state", "stopped", 0, true);
+            } else if (x == "CLOSE") {
+              id(transmit_close).execute();
+              id(mqtt_client).publish("dooya/curtain/state", "closing", 0, true);
+            }
+
+    - topic: dooya/schedule/command
+      then:
+        - lambda: |-
+            if (x == "ON") {
+              id(schedule_enabled).turn_on();
+            } else if (x == "OFF") {
+              id(schedule_enabled).turn_off();
+            }
+
+    - topic: dooya/schedule/partial_hour/set
+      then:
+        - lambda: |-
+            int val = atoi(x.c_str());
+            if (val >= 0 && val <= 23) {
+              auto call = id(partial_open_hour).make_call();
+              call.set_value(val);
+              call.perform();
+            }
+
+    - topic: dooya/schedule/partial_minute/set
+      then:
+        - lambda: |-
+            int val = atoi(x.c_str());
+            if (val >= 0 && val <= 59) {
+              auto call = id(partial_open_minute).make_call();
+              call.set_value(val);
+              call.perform();
+            }
+
+    - topic: dooya/schedule/partial_seconds/set
+      then:
+        - lambda: |-
+            int val = atoi(x.c_str());
+            if (val >= 1 && val <= 40) {
+              auto call = id(partial_open_seconds).make_call();
+              call.set_value(val);
+              call.perform();
+            }
+
+    - topic: dooya/schedule/full_hour/set
+      then:
+        - lambda: |-
+            int val = atoi(x.c_str());
+            if (val >= 0 && val <= 23) {
+              auto call = id(full_open_hour).make_call();
+              call.set_value(val);
+              call.perform();
+            }
+
+    - topic: dooya/schedule/full_minute/set
+      then:
+        - lambda: |-
+            int val = atoi(x.c_str());
+            if (val >= 0 && val <= 59) {
+              auto call = id(full_open_minute).make_call();
+              call.set_value(val);
+              call.perform();
+            }
+
 # --- Time source (standalone schedule, no Home Assistant) --------------------
 
 time:
@@ -82,37 +207,41 @@ time:
       - 0.pool.ntp.org
       - 1.pool.ntp.org
       - 2.pool.ntp.org
-    on_time:
-      # 07:00 daily: open curtains to ~50% (halfway).
-      # Assumption: curtain is normally fully closed at 07:00.
-      # Because the time_based cover can't know true position after reboot or
-      # manual remote use, we send OPEN for 20s (half of 40s full travel), then
-      # STOP. If already open, motor stays at current position after STOP.
-      - seconds: 0
-        minutes: 0
-        hours: 7
-        then:
-          - if:
-              condition:
-                switch.is_on: schedule_enabled
-              then:
-                - logger.log: "Schedule: 07:00 — opening to 50%"
-                - script.execute: transmit_open
-                - delay: 20s
-                - script.execute: transmit_stop
 
-      # 09:30 daily: fully open curtains.
-      # Just sends OPEN; motor has built-in endstop so excess travel is safe.
-      - seconds: 0
-        minutes: 30
-        hours: 9
-        then:
-          - if:
-              condition:
-                switch.is_on: schedule_enabled
-              then:
-                - logger.log: "Schedule: 09:30 — opening fully"
-                - script.execute: transmit_open
+# --- Schedule check (runs every minute, compares against configurable times) --
+# Uses stored number values instead of hard-coded times.
+# Assumption: curtain is normally fully closed at partial open time.
+
+interval:
+  - interval: 60s
+    then:
+      - lambda: |-
+          if (!id(schedule_enabled).state) return;
+          
+          auto time = id(sntp_time).now();
+          if (!time.is_valid()) return;
+          
+          int current_hour = time.hour;
+          int current_minute = time.minute;
+          
+          // Check partial open time
+          int partial_hour = (int)id(partial_open_hour).state;
+          int partial_minute = (int)id(partial_open_minute).state;
+          if (current_hour == partial_hour && current_minute == partial_minute) {
+            int duration_ms = (int)(id(partial_open_seconds).state * 1000);
+            ESP_LOGI("schedule", "Partial open triggered at %02d:%02d — opening for %ds",
+                     current_hour, current_minute, (int)id(partial_open_seconds).state);
+            id(transmit_open).execute();
+            id(scheduled_stop).execute();
+          }
+          
+          // Check full open time
+          int full_hour = (int)id(full_open_hour).state;
+          int full_minute = (int)id(full_open_minute).state;
+          if (current_hour == full_hour && current_minute == full_minute) {
+            ESP_LOGI("schedule", "Full open triggered at %02d:%02d", current_hour, current_minute);
+            id(transmit_open).execute();
+          }
 
 # --- SPI + CC1101 (native, async ASK/OOK) ------------------------------------
 
@@ -162,7 +291,7 @@ substitutions:
   dooya_id: "0x009C4B85"
   dooya_channel: "5"
 
-# --- Scripts (shared by buttons and cover) -----------------------------------
+# --- Scripts (shared by buttons, cover, and schedule) ------------------------
 
 script:
   - id: transmit_open
@@ -198,6 +327,13 @@ script:
             times: 3
             wait_time: 15ms
 
+  # Delayed stop for partial open schedule
+  - id: scheduled_stop
+    mode: restart
+    then:
+      - delay: !lambda "return (int)(id(partial_open_seconds).state * 1000);"
+      - script.execute: transmit_stop
+
 # --- Schedule toggle (persisted across reboots) ------------------------------
 
 switch:
@@ -207,7 +343,105 @@ switch:
     icon: mdi:calendar-clock
     optimistic: true
     restore_mode: RESTORE_DEFAULT_ON
-    # Toggle from web UI or HA to enable/disable 07:00 and 09:30 automation.
+    # Toggle from web UI, HA, or MQTT to enable/disable schedule automation.
+    on_turn_on:
+      - mqtt.publish:
+          topic: dooya/schedule/state
+          payload: "ON"
+          retain: true
+    on_turn_off:
+      - mqtt.publish:
+          topic: dooya/schedule/state
+          payload: "OFF"
+          retain: true
+
+# --- Schedule settings (configurable times, persisted across reboots) ---------
+
+number:
+  - platform: template
+    name: "Partial Open Hour"
+    id: partial_open_hour
+    icon: mdi:clock-outline
+    optimistic: true
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 7
+    restore_value: true
+    unit_of_measurement: "h"
+    on_value:
+      - mqtt.publish:
+          topic: dooya/schedule/partial_hour
+          payload: !lambda "return to_string((int)x);"
+          retain: true
+
+  - platform: template
+    name: "Partial Open Minute"
+    id: partial_open_minute
+    icon: mdi:clock-outline
+    optimistic: true
+    min_value: 0
+    max_value: 59
+    step: 1
+    initial_value: 0
+    restore_value: true
+    unit_of_measurement: "m"
+    on_value:
+      - mqtt.publish:
+          topic: dooya/schedule/partial_minute
+          payload: !lambda "return to_string((int)x);"
+          retain: true
+
+  - platform: template
+    name: "Partial Open Seconds"
+    id: partial_open_seconds
+    icon: mdi:timer-outline
+    optimistic: true
+    min_value: 1
+    max_value: 40
+    step: 1
+    initial_value: 20
+    restore_value: true
+    unit_of_measurement: "s"
+    on_value:
+      - mqtt.publish:
+          topic: dooya/schedule/partial_seconds
+          payload: !lambda "return to_string((int)x);"
+          retain: true
+
+  - platform: template
+    name: "Full Open Hour"
+    id: full_open_hour
+    icon: mdi:clock-outline
+    optimistic: true
+    min_value: 0
+    max_value: 23
+    step: 1
+    initial_value: 9
+    restore_value: true
+    unit_of_measurement: "h"
+    on_value:
+      - mqtt.publish:
+          topic: dooya/schedule/full_hour
+          payload: !lambda "return to_string((int)x);"
+          retain: true
+
+  - platform: template
+    name: "Full Open Minute"
+    id: full_open_minute
+    icon: mdi:clock-outline
+    optimistic: true
+    min_value: 0
+    max_value: 59
+    step: 1
+    initial_value: 30
+    restore_value: true
+    unit_of_measurement: "m"
+    on_value:
+      - mqtt.publish:
+          topic: dooya/schedule/full_minute
+          payload: !lambda "return to_string((int)x);"
+          retain: true
 
 # --- Buttons (manual control from ESPHome web / HA) --------------------------
 
