@@ -1,6 +1,6 @@
 # Dooya DC1600 Capture + Transmit (ESP32 + CC1101)
 
-A ready-to-flash ESPHome configuration that captures RF codes from a Dooya DC1600 (or compatible) 433 MHz remote AND transmits cloned commands to control your curtains from Home Assistant. The ESP32 listens for remote button presses, logs the `id`, `channel`, `button`, and `check` values, and can retransmit those commands to operate the curtain motor.
+A ready-to-flash ESPHome configuration that captures RF codes from a Dooya DC1600 (or compatible) 433 MHz remote AND transmits cloned commands to control your curtains. Works standalone (no Home Assistant required) with a built-in morning schedule. The ESP32 listens for remote button presses, logs the `id`, `channel`, `button`, and `check` values, and can retransmit those commands to operate the curtain motor.
 
 **Requires ESPHome ≥ 2025.12** with native [`cc1101` component](https://esphome.io/components/cc1101.html) support.
 
@@ -98,7 +98,33 @@ After flashing the updated configuration:
 
 3. **Verify original remote still works:** After testing transmit, press buttons on your physical DC1600 remote. The motor should still respond (cloning does not interfere with the original remote).
 
-4. **Adjust travel time:** The cover entity uses placeholder durations (20 seconds). Measure your curtain's actual open and close times and update `open_duration` / `close_duration` in the YAML for accurate position tracking.
+4. **Adjust travel time:** The cover entity uses configured travel times (currently 40 seconds). Measure your curtain's actual open and close times and update `open_duration` / `close_duration` in the YAML for accurate position tracking.
+
+## Schedule
+
+The ESP32 runs a standalone morning schedule (no Home Assistant required):
+
+| Time | Action |
+|------|--------|
+| 07:00 | Open curtains to ~50% (halfway) |
+| 09:30 | Open curtains fully |
+
+**How it works:**
+
+- Uses SNTP to sync time on boot (servers: `pool.ntp.org`)
+- Timezone: `Asia/Bangkok` (UTC+7)
+- 07:00 action: sends OPEN, waits 20 seconds, then sends STOP (half of 40s full travel)
+- 09:30 action: sends OPEN (motor has built-in endstop)
+- Curtains never close automatically; closing is always manual via remote or web UI
+
+**Assumptions:**
+
+- The curtain is normally fully closed at 07:00. If already open, the motor reaches its endstop quickly and stops; the 20-second wait still completes before STOP is sent.
+- After a reboot, the time-based cover doesn't know the true position, so the schedule sends raw RF commands rather than using the cover's position logic.
+
+**Enable/Disable:**
+
+A "Morning Schedule" switch is exposed in the ESPHome web UI (and Home Assistant, if connected). Toggle it off to disable the automatic schedule. The setting persists across reboots (`RESTORE_DEFAULT_ON`).
 
 ## Capturing Your Own Codes
 
@@ -129,6 +155,7 @@ If you need to capture codes from a different remote:
 - [ESPHome Remote Transmitter](https://esphome.io/components/remote_transmitter.html)
 - [ESPHome Remote Receiver](https://esphome.io/components/remote_receiver.html)
 - [ESPHome Time-Based Cover](https://esphome.io/components/cover/time_based/)
+- [ESPHome Time / SNTP](https://esphome.io/components/time/sntp.html)
 
 ## License
 
