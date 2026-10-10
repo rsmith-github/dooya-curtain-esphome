@@ -427,7 +427,7 @@ export default function HomePage() {
                           max="23"
                           value={editValues.partialHour ?? 7}
                           onChange={(e) => setEditValues({ ...editValues, partialHour: parseInt(e.target.value) || 0 })}
-                          className="w-12 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body text-sm tabular-nums text-[var(--text-primary)]"
+                          className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
                         />
                         <span className="text-[var(--text-secondary)]">:</span>
                         <input
@@ -436,7 +436,7 @@ export default function HomePage() {
                           max="59"
                           value={editValues.partialMinute ?? 0}
                           onChange={(e) => setEditValues({ ...editValues, partialMinute: parseInt(e.target.value) || 0 })}
-                          className="w-12 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body text-sm tabular-nums text-[var(--text-primary)]"
+                          className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
                         />
                       </div>
                     </div>
@@ -521,7 +521,7 @@ export default function HomePage() {
                         max="23"
                         value={editValues.fullHour ?? 9}
                         onChange={(e) => setEditValues({ ...editValues, fullHour: parseInt(e.target.value) || 0 })}
-                        className="w-12 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body text-sm tabular-nums text-[var(--text-primary)]"
+                        className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
                       />
                       <span className="text-[var(--text-secondary)]">:</span>
                       <input
@@ -530,7 +530,7 @@ export default function HomePage() {
                         max="59"
                         value={editValues.fullMinute ?? 30}
                         onChange={(e) => setEditValues({ ...editValues, fullMinute: parseInt(e.target.value) || 0 })}
-                        className="w-12 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body text-sm tabular-nums text-[var(--text-primary)]"
+                        className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
                       />
                     </div>
                   </div>
