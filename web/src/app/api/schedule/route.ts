@@ -29,13 +29,18 @@ export async function POST(request: NextRequest) {
     if (body.settings) {
       const { partialHour, partialMinute, partialSeconds, fullHour, fullMinute } = body.settings;
 
-      // Validate inputs
+      // Validate and publish each setting
+      // We publish to both /set (for ESP32 to process) and state topic (retained, for UI reads)
+      // This ensures the UI sees updated values even if ESP32's on_value doesn't fire
+      // (on_value only fires when value changes, not when set to same value)
+
       if (partialHour !== undefined) {
         const val = parseInt(partialHour, 10);
         if (isNaN(val) || val < 0 || val > 23) {
           return NextResponse.json({ error: "Invalid partial hour (0-23)" }, { status: 400 });
         }
         await publishMessage(TOPICS.PARTIAL_HOUR_SET, String(val));
+        await publishMessage(TOPICS.PARTIAL_HOUR, String(val), true);
       }
 
       if (partialMinute !== undefined) {
@@ -44,6 +49,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Invalid partial minute (0-59)" }, { status: 400 });
         }
         await publishMessage(TOPICS.PARTIAL_MINUTE_SET, String(val));
+        await publishMessage(TOPICS.PARTIAL_MINUTE, String(val), true);
       }
 
       if (partialSeconds !== undefined) {
@@ -52,6 +58,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Invalid partial seconds (1-40)" }, { status: 400 });
         }
         await publishMessage(TOPICS.PARTIAL_SECONDS_SET, String(val));
+        await publishMessage(TOPICS.PARTIAL_SECONDS, String(val), true);
       }
 
       if (fullHour !== undefined) {
@@ -60,6 +67,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Invalid full hour (0-23)" }, { status: 400 });
         }
         await publishMessage(TOPICS.FULL_HOUR_SET, String(val));
+        await publishMessage(TOPICS.FULL_HOUR, String(val), true);
       }
 
       if (fullMinute !== undefined) {
@@ -68,6 +76,7 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: "Invalid full minute (0-59)" }, { status: 400 });
         }
         await publishMessage(TOPICS.FULL_MINUTE_SET, String(val));
+        await publishMessage(TOPICS.FULL_MINUTE, String(val), true);
       }
 
       return NextResponse.json({ success: true });
