@@ -131,6 +131,9 @@ mqtt:
   username: !secret mqtt_username
   password: !secret mqtt_password
   discovery: false  # Disable Home Assistant discovery to reduce MQTT overhead
+  # Start fresh session on connect. EMQX Serverless persists sessions for 2h,
+  # so old subscriptions from previous firmware count against the 10-sub limit.
+  clean_session: true
 
   # EMQX Cloud Serverless uses DigiCert Global Root CA for TLS.
   # This certificate is required for ESP-IDF to validate the server.
