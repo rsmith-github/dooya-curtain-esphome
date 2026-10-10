@@ -150,18 +150,17 @@ export default function HomePage() {
   }
 
   function startEdit(type: "partial" | "full") {
-    if (!status?.settings) return;
     setEditingSchedule(type);
     if (type === "partial") {
       setEditValues({
-        partialHour: status.settings.partialHour ?? 7,
-        partialMinute: status.settings.partialMinute ?? 0,
-        partialSeconds: status.settings.partialSeconds ?? 20,
+        partialHour: status?.settings?.partialHour ?? 7,
+        partialMinute: status?.settings?.partialMinute ?? 0,
+        partialSeconds: status?.settings?.partialSeconds ?? 20,
       });
     } else {
       setEditValues({
-        fullHour: status.settings.fullHour ?? 9,
-        fullMinute: status.settings.fullMinute ?? 30,
+        fullHour: status?.settings?.fullHour ?? 9,
+        fullMinute: status?.settings?.fullMinute ?? 30,
       });
     }
   }
@@ -419,8 +418,9 @@ export default function HomePage() {
                       <p className="font-label text-xs uppercase tracking-wide text-[var(--text-primary)]">
                         Morning, partial
                       </p>
-                      <p className="font-body text-sm text-[var(--text-secondary)] tabular-nums">
+                      <p className={`font-body text-sm tabular-nums ${!status?.settings ? "text-[var(--text-secondary)] italic" : "text-[var(--text-secondary)]"}`}>
                         {formatTime(status?.settings?.partialHour ?? null, status?.settings?.partialMinute ?? null)} · ~{Math.round(((status?.settings?.partialSeconds ?? 20) / 40) * 100)}% open
+                        {!status?.settings && " (tap to set)"}
                       </p>
                     </div>
                   </div>
@@ -428,6 +428,7 @@ export default function HomePage() {
                     onClick={() => startEdit("partial")}
                     className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] rounded transition-colors"
                     aria-label="Edit partial open schedule"
+                    title={!status?.settings ? "Set schedule (using defaults)" : "Edit schedule"}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
@@ -497,8 +498,9 @@ export default function HomePage() {
                       <p className="font-label text-xs uppercase tracking-wide text-[var(--text-primary)]">
                         Full open
                       </p>
-                      <p className="font-body text-sm text-[var(--text-secondary)] tabular-nums">
+                      <p className={`font-body text-sm tabular-nums ${!status?.settings ? "text-[var(--text-secondary)] italic" : "text-[var(--text-secondary)]"}`}>
                         {formatTime(status?.settings?.fullHour ?? null, status?.settings?.fullMinute ?? null)} · 100% open
+                        {!status?.settings && " (tap to set)"}
                       </p>
                     </div>
                   </div>
@@ -506,6 +508,7 @@ export default function HomePage() {
                     onClick={() => startEdit("full")}
                     className="p-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)] rounded transition-colors"
                     aria-label="Edit full open schedule"
+                    title={!status?.settings ? "Set schedule (using defaults)" : "Edit schedule"}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
