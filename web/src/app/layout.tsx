@@ -35,6 +35,11 @@ export const metadata: Metadata = {
   description: "Smart curtain control for Scope Promsri residence",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
