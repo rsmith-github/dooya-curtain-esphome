@@ -54,6 +54,51 @@ esp32:
   framework:
     type: esp-idf
 
+# --- Globals for position tracking with confidence ---------------------------
+# Position is only "known" after a full travel or a STOP from a known position.
+# After boot or unknown movement, position stays unknown until next full travel.
+
+globals:
+  - id: curtain_position
+    type: float
+    restore_value: true
+    initial_value: "50.0"
+  
+  - id: position_known
+    type: bool
+    restore_value: true
+    initial_value: "false"
+  
+  - id: movement_direction
+    type: int
+    restore_value: false
+    initial_value: "0"  # 0=stopped, 1=opening, -1=closing
+  
+  - id: movement_start_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  
+  - id: movement_start_position
+    type: float
+    restore_value: false
+    initial_value: "50.0"
+  
+  - id: start_position_was_known
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  
+  - id: is_transmitting
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  
+  - id: last_rf_command_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
 # --- Network / API / OTA -----------------------------------------------------
 
 wifi:
@@ -133,14 +178,11 @@ mqtt:
       then:
         - lambda: |-
             if (x == "OPEN") {
-              id(transmit_open).execute();
-              id(mqtt_client).publish("dooya/curtain/state", "opening", 0, true);
+              id(handle_open).execute();
             } else if (x == "STOP") {
-              id(transmit_stop).execute();
-              id(mqtt_client).publish("dooya/curtain/state", "stopped", 0, true);
+              id(handle_stop).execute();
             } else if (x == "CLOSE") {
-              id(transmit_close).execute();
-              id(mqtt_client).publish("dooya/curtain/state", "closing", 0, true);
+              id(handle_close).execute();
             }
 
     - topic: dooya/schedule/command
@@ -236,7 +278,7 @@ interval:
             int duration_ms = (int)(id(partial_open_seconds).state * 1000);
             ESP_LOGI("schedule", "Partial open triggered at %02d:%02d — opening for %ds",
                      current_hour, current_minute, (int)id(partial_open_seconds).state);
-            id(transmit_open).execute();
+            id(handle_open).execute();
             id(scheduled_stop).execute();
           }
           
@@ -245,7 +287,31 @@ interval:
           int full_minute = (int)id(full_open_minute).state;
           if (current_hour == full_hour && current_minute == full_minute) {
             ESP_LOGI("schedule", "Full open triggered at %02d:%02d", current_hour, current_minute);
-            id(transmit_open).execute();
+            id(handle_open).execute();
+          }
+
+  # Check for full travel completion (every 500ms while moving)
+  - interval: 500ms
+    then:
+      - lambda: |-
+          if (id(movement_direction) == 0) return;
+          
+          uint32_t now = millis();
+          uint32_t elapsed = now - id(movement_start_ms);
+          const uint32_t TRAVEL_TIME_MS = 40000;  // 40 seconds
+          
+          if (elapsed >= TRAVEL_TIME_MS) {
+            // Full travel completed - position is now known
+            if (id(movement_direction) == 1) {
+              id(curtain_position) = 100.0;
+              ESP_LOGI("position", "Full open complete - position now KNOWN at 100%%");
+            } else {
+              id(curtain_position) = 0.0;
+              ESP_LOGI("position", "Full close complete - position now KNOWN at 0%%");
+            }
+            id(position_known) = true;
+            id(movement_direction) = 0;
+            id(publish_position).execute();
           }
 
 # --- SPI + CC1101 (native, async ASK/OOK) ------------------------------------
@@ -268,9 +334,11 @@ remote_transmitter:
   non_blocking: true  # ESP32 RMT default; set explicitly to silence warning
   on_transmit:
     then:
+      - lambda: "id(is_transmitting) = true;"
       - cc1101.begin_tx
   on_complete:
     then:
+      - lambda: "id(is_transmitting) = false;"
       - cc1101.begin_rx
 
 remote_receiver:
@@ -280,6 +348,48 @@ remote_receiver:
   tolerance: 50%
   filter: 250us
   idle: 7ms
+  on_dooya:
+    then:
+      - lambda: |-
+          // Ignore our own transmissions
+          if (id(is_transmitting)) {
+            ESP_LOGD("rf", "Ignoring own transmission");
+            return;
+          }
+          
+          // Debounce: ignore commands within 300ms of last one
+          uint32_t now = millis();
+          if (now - id(last_rf_command_ms) < 300) {
+            ESP_LOGD("rf", "Ignoring repeat frame");
+            return;
+          }
+          id(last_rf_command_ms) = now;
+          
+          // Only respond to our remote (id 0x009C4B85, channel 5)
+          if (x.id != 0x009C4B85 || x.channel != 5) {
+            ESP_LOGD("rf", "Ignoring different remote: id=0x%08X channel=%d", x.id, x.channel);
+            return;
+          }
+          
+          // Ignore long-press/held frames (check 12-15)
+          if (x.check >= 12 && x.check <= 15) {
+            ESP_LOGD("rf", "Ignoring held frame: check=%d", x.check);
+            return;
+          }
+          
+          ESP_LOGI("rf", "Remote command received: button=%d check=%d", x.button, x.check);
+          
+          // Handle remote buttons (don't transmit - the remote already did)
+          if (x.button == 1) {
+            // OPEN pressed on physical remote
+            id(handle_open_no_tx).execute();
+          } else if (x.button == 5) {
+            // STOP pressed on physical remote
+            id(handle_stop_no_tx).execute();
+          } else if (x.button == 3) {
+            // CLOSE pressed on physical remote
+            id(handle_close_no_tx).execute();
+          }
 
 # =============================================================================
 # CAPTURED CODES — DC1600 remote, channel 5
@@ -299,6 +409,7 @@ substitutions:
 # --- Scripts (shared by buttons, cover, and schedule) ------------------------
 
 script:
+  # Transmit OPEN and update position tracking
   - id: transmit_open
     then:
       - remote_transmitter.transmit_dooya:
@@ -310,6 +421,7 @@ script:
             times: 3
             wait_time: 15ms
 
+  # Transmit STOP
   - id: transmit_stop
     then:
       - remote_transmitter.transmit_dooya:
@@ -321,6 +433,7 @@ script:
             times: 3
             wait_time: 15ms
 
+  # Transmit CLOSE
   - id: transmit_close
     then:
       - remote_transmitter.transmit_dooya:
@@ -332,16 +445,127 @@ script:
             times: 3
             wait_time: 15ms
 
+  # Handle OPEN command (transmit + track position)
+  - id: handle_open
+    then:
+      - script.execute: transmit_open
+      - script.execute: handle_open_no_tx
+
+  # Handle OPEN without transmitting (for physical remote detection)
+  - id: handle_open_no_tx
+    then:
+      - lambda: |-
+          id(movement_start_ms) = millis();
+          id(movement_start_position) = id(curtain_position);
+          id(start_position_was_known) = id(position_known);
+          id(movement_direction) = 1;  // opening
+          ESP_LOGI("position", "OPEN started (position %s at %.0f%%)",
+                   id(position_known) ? "known" : "unknown", id(curtain_position));
+      - script.execute: publish_position
+
+  # Handle STOP command (transmit + calculate position)
+  - id: handle_stop
+    then:
+      - script.execute: transmit_stop
+      - script.execute: handle_stop_no_tx
+
+  # Handle STOP without transmitting (for physical remote detection)
+  - id: handle_stop_no_tx
+    then:
+      - lambda: |-
+          if (id(movement_direction) == 0) {
+            ESP_LOGD("position", "STOP while already stopped");
+            return;
+          }
+          
+          uint32_t elapsed_ms = millis() - id(movement_start_ms);
+          const float TRAVEL_TIME_MS = 40000.0;
+          float travel_percent = (elapsed_ms / TRAVEL_TIME_MS) * 100.0;
+          
+          if (id(start_position_was_known)) {
+            // Calculate new position from known starting point
+            float new_pos;
+            if (id(movement_direction) == 1) {
+              // Was opening
+              new_pos = id(movement_start_position) + travel_percent;
+              if (new_pos > 100.0) new_pos = 100.0;
+            } else {
+              // Was closing
+              new_pos = id(movement_start_position) - travel_percent;
+              if (new_pos < 0.0) new_pos = 0.0;
+            }
+            id(curtain_position) = new_pos;
+            id(position_known) = true;
+            ESP_LOGI("position", "STOP after %dms (%.0f%% travel) - position KNOWN at %.0f%%",
+                     elapsed_ms, travel_percent, new_pos);
+          } else {
+            // Started from unknown position - still unknown
+            ESP_LOGI("position", "STOP after %dms - position still UNKNOWN");
+          }
+          
+          id(movement_direction) = 0;
+      - script.execute: publish_position
+
+  # Handle CLOSE command (transmit + track position)
+  - id: handle_close
+    then:
+      - script.execute: transmit_close
+      - script.execute: handle_close_no_tx
+
+  # Handle CLOSE without transmitting (for physical remote detection)
+  - id: handle_close_no_tx
+    then:
+      - lambda: |-
+          id(movement_start_ms) = millis();
+          id(movement_start_position) = id(curtain_position);
+          id(start_position_was_known) = id(position_known);
+          id(movement_direction) = -1;  // closing
+          ESP_LOGI("position", "CLOSE started (position %s at %.0f%%)",
+                   id(position_known) ? "known" : "unknown", id(curtain_position));
+      - script.execute: publish_position
+
   # Delayed stop for partial open schedule
   - id: scheduled_stop
     mode: restart
     then:
       - delay: !lambda "return (int)(id(partial_open_seconds).state * 1000);"
-      - script.execute: transmit_stop
+      - script.execute: handle_stop
 
-  # Publish all states to MQTT (called on boot after restore)
+  # Publish position state to MQTT
+  - id: publish_position
+    then:
+      - lambda: |-
+          // Publish position (only meaningful if known)
+          char pos_str[8];
+          snprintf(pos_str, sizeof(pos_str), "%.0f", id(curtain_position));
+          id(mqtt_client).publish("dooya/curtain/position", pos_str, 0, true);
+          
+          // Publish confidence flag
+          id(mqtt_client).publish("dooya/curtain/position_known", 
+                                  id(position_known) ? "true" : "false", 0, true);
+          
+          // Publish movement state
+          const char* movement;
+          if (id(movement_direction) == 1) {
+            movement = "opening";
+          } else if (id(movement_direction) == -1) {
+            movement = "closing";
+          } else {
+            movement = "stopped";
+          }
+          id(mqtt_client).publish("dooya/curtain/movement", movement, 0, true);
+          
+          // Publish movement start time (for elapsed calculation in UI)
+          if (id(movement_direction) != 0) {
+            char start_str[16];
+            snprintf(start_str, sizeof(start_str), "%lu", id(movement_start_ms));
+            id(mqtt_client).publish("dooya/curtain/movement_start_ms", start_str, 0, true);
+          }
+
+  # Publish all states to MQTT (called on MQTT connect)
   - id: publish_all_states
     then:
+      - script.execute: publish_position
       - mqtt.publish:
           topic: dooya/schedule/state
           payload: !lambda "return id(schedule_enabled).state ? \"ON\" : \"OFF\";"
@@ -484,23 +708,24 @@ button:
     name: "Curtain Open"
     icon: mdi:curtains
     on_press:
-      - script.execute: transmit_open
+      - script.execute: handle_open
 
   - platform: template
     name: "Curtain Stop"
     icon: mdi:stop
     on_press:
-      - script.execute: transmit_stop
+      - script.execute: handle_stop
 
   - platform: template
     name: "Curtain Close"
     icon: mdi:curtains-closed
     on_press:
-      - script.execute: transmit_close
+      - script.execute: handle_close
 
 # --- Cover entity (proper HA cover with open/close/stop) ---------------------
-# time_based cover estimates position from travel time.
-# Measure your curtain's actual open/close duration and adjust below.
+# Note: The time_based cover's internal position estimate is separate from
+# our position tracking with confidence. The cover entity is kept for HA
+# compatibility but our MQTT position topics are the source of truth.
 
 cover:
   - platform: time_based
@@ -512,11 +737,11 @@ cover:
     close_duration: 40s
 
     open_action:
-      - script.execute: transmit_open
+      - script.execute: handle_open
     close_action:
-      - script.execute: transmit_close
+      - script.execute: handle_close
     stop_action:
-      - script.execute: transmit_stop
+      - script.execute: handle_stop
 
     # Motor has built-in end stops; no need to send stop at end of travel.
     has_built_in_endstop: true

@@ -107,6 +107,27 @@ After flashing the updated configuration:
 
 4. **Adjust travel time:** The cover entity uses configured travel times (currently 40 seconds). Measure your curtain's actual open and close times and update `open_duration` / `close_duration` in the YAML for accurate position tracking.
 
+## Position Tracking with Confidence
+
+The system tracks curtain position with honest uncertainty:
+
+**When position is KNOWN:**
+- After a full OPEN runs uninterrupted for 40s → position = 100%
+- After a full CLOSE runs uninterrupted for 40s → position = 0%
+- After a STOP from a known starting position → position calculated from elapsed time
+
+**When position is UNKNOWN:**
+- After boot (default state)
+- After any movement from an unknown starting position
+- Position becomes known only after the next full-travel event
+
+**UI states:**
+- **Known %** — Shows position number and curtain illustration
+- **Moving** — Shows "Opening..." or "Closing..." while in motion
+- **Standby** — Shows listening icon when position is unknown, awaiting commands
+
+**RF tracking:** The CC1101 receiver also detects physical remote button presses. Commands from the web app, schedule, local web UI, AND physical remote all update the position tracker. Own transmissions are filtered to avoid double-counting.
+
 ## Schedule
 
 The ESP32 runs a standalone morning schedule (no Home Assistant required):
@@ -235,8 +256,10 @@ The ESP32 and web app communicate via these MQTT topics:
 | Topic | Direction | Payload | Description |
 |-------|-----------|---------|-------------|
 | `dooya/curtain/command` | → ESP32 | `OPEN`, `STOP`, `CLOSE` | Curtain commands |
-| `dooya/curtain/state` | ← ESP32 | `opening`, `stopped`, `closing` | Last action (retained) |
 | `dooya/curtain/availability` | ← ESP32 | `online`, `offline` | Device status (retained) |
+| `dooya/curtain/position` | ← ESP32 | `0`-`100` | Position % (retained) |
+| `dooya/curtain/position_known` | ← ESP32 | `true`, `false` | Position confidence (retained) |
+| `dooya/curtain/movement` | ← ESP32 | `stopped`, `opening`, `closing` | Movement state (retained) |
 | `dooya/schedule/command` | → ESP32 | `ON`, `OFF` | Enable/disable schedule |
 | `dooya/schedule/state` | ← ESP32 | `ON`, `OFF` | Schedule status (retained) |
 | `dooya/schedule/partial_hour` | ← ESP32 | `0`-`23` | Partial open hour (retained) |
