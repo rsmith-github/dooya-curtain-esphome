@@ -3,6 +3,7 @@
 /* Scope Promsri Design Tokens */
 :root {
   /* Light Mode (Default) */
+  color-scheme: light; /* Native pickers (time input) follow the app theme */
   --background: #F3EEE6;
   --surface: #E6DDD0;
   --card: #F8F5EF;
@@ -23,6 +24,7 @@
 }
 
 [data-theme="dark"] {
+  color-scheme: dark;
   --background: #0E1A17;
   --surface: #172823;
   --card: #1F3A33;
