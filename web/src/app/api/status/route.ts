@@ -55,8 +55,8 @@ export async function GET() {
     return NextResponse.json({
       online: messages[TOPICS.CURTAIN_AVAILABILITY] === "online",
       curtainState: messages[TOPICS.CURTAIN_STATE] || "unknown",
-      // Return position when known, including 0 (fully closed)
-      position: positionKnown ? position : null,
+      // Last tracked position; treat as an estimate unless positionKnown
+      position,
       positionKnown,
       movement,
       movementStartMs,
