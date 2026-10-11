@@ -534,14 +534,20 @@ script:
   - id: publish_position
     then:
       - lambda: |-
+          // Retained so the web app can read them on a fresh connection.
+          // std::string args pick publish(topic, payload, qos, retain); raw
+          // char* args resolve to the (payload_length, qos) overload and drop retain.
+          auto publish_retained = [](const char *topic, const std::string &payload) {
+            id(mqtt_client).publish(std::string(topic), payload, 0, true);
+          };
+
           // Publish position (only meaningful if known)
           char pos_str[8];
           snprintf(pos_str, sizeof(pos_str), "%.0f", id(curtain_position));
-          id(mqtt_client).publish("dooya/curtain/position", pos_str, 0, true);
+          publish_retained("dooya/curtain/position", pos_str);
           
           // Publish confidence flag
-          id(mqtt_client).publish("dooya/curtain/position_known", 
-                                  id(position_known) ? "true" : "false", 0, true);
+          publish_retained("dooya/curtain/position_known", id(position_known) ? "true" : "false");
           
           // Publish movement state
           const char* movement;
@@ -552,13 +558,13 @@ script:
           } else {
             movement = "stopped";
           }
-          id(mqtt_client).publish("dooya/curtain/movement", movement, 0, true);
+          publish_retained("dooya/curtain/movement", movement);
           
           // Publish movement start time (for elapsed calculation in UI)
           if (id(movement_direction) != 0) {
             char start_str[16];
             snprintf(start_str, sizeof(start_str), "%lu", id(movement_start_ms));
-            id(mqtt_client).publish("dooya/curtain/movement_start_ms", start_str, 0, true);
+            publish_retained("dooya/curtain/movement_start_ms", start_str);
           }
 
   # Publish all states to MQTT (called on MQTT connect)

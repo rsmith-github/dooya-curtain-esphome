@@ -180,6 +180,11 @@ export default function HomePage() {
     return null;
   }
 
+  // Position to draw: last tracked value even when unconfirmed, else closed
+  function getIllustrationPosition(): number {
+    return typeof status?.position === "number" ? status.position : 0;
+  }
+
   function isMoving(): boolean {
     return status?.movement === "opening" || status?.movement === "closing";
   }
@@ -276,34 +281,28 @@ export default function HomePage() {
 
         {/* Curtain Control Card */}
         <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-6 mb-6">
-          {/* Curtain Illustration - only show when position is known */}
-          <div className="mb-6">
-            {displayPosition !== null ? (
-              <CurtainIllustration openPercent={displayPosition} />
-            ) : (
-              <div className="h-32 flex items-center justify-center">
-                {/* Standby/Listening Icon - subtle beacon animation */}
-                <div className="relative">
-                  <div className={`w-16 h-16 rounded-full border-2 border-[var(--jade)] flex items-center justify-center ${moving ? "animate-pulse" : ""}`}>
-                    {moving ? (
-                      // Moving indicator
-                      <svg className={`w-8 h-8 text-[var(--jade)] ${status?.movement === "opening" ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
-                      </svg>
-                    ) : (
-                      // Listening/standby icon
-                      <svg className="w-8 h-8 text-[var(--jade)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-                      </svg>
-                    )}
-                  </div>
-                  {/* Subtle beacon rings when listening */}
-                  {!moving && (
-                    <>
-                      <div className="absolute inset-0 w-16 h-16 rounded-full border border-[var(--jade)] opacity-30 animate-ping" style={{ animationDuration: "3s" }}></div>
-                    </>
-                  )}
-                </div>
+          {/* Curtain Illustration - always visible; dimmed when position is an estimate */}
+          <div className="relative mb-6">
+            <div className={`transition-opacity duration-300 ${displayPosition === null && !moving ? "opacity-50" : ""}`}>
+              <CurtainIllustration openPercent={getIllustrationPosition()} />
+            </div>
+
+            {/* Status badge: shows movement, or standby when position is unknown */}
+            {(moving || displayPosition === null) && (
+              <div className="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-1 rounded-full bg-[var(--card)]/90 border border-[var(--border)] shadow-sm">
+                {moving ? (
+                  <svg className={`w-3.5 h-3.5 text-[var(--jade)] animate-pulse ${status?.movement === "opening" ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
+                  </svg>
+                ) : (
+                  <span className="relative flex w-2 h-2">
+                    <span className="absolute inline-flex w-full h-full rounded-full bg-[var(--jade)] opacity-60 animate-ping" style={{ animationDuration: "3s" }}></span>
+                    <span className="relative inline-flex w-2 h-2 rounded-full bg-[var(--jade)]"></span>
+                  </span>
+                )}
+                <span className="font-label text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
+                  {moving ? (status?.movement === "opening" ? "Opening" : "Closing") : "Standby"}
+                </span>
               </div>
             )}
           </div>
@@ -331,13 +330,13 @@ export default function HomePage() {
                 </p>
               </>
             ) : (
-              // Unknown position - standby/listening
+              // Unknown position - drawing shows last estimate
               <>
                 <p className="font-heading text-xl sm:text-2xl text-[var(--text-secondary)]">
-                  Standby
+                  Position unknown
                 </p>
                 <p className="font-body text-xs text-[var(--text-secondary)] mt-1">
-                  Listening for commands
+                  Fully open or close once to sync
                 </p>
               </>
             )}
