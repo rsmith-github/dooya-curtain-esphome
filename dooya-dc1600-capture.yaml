@@ -131,6 +131,9 @@ mqtt:
   username: !secret mqtt_username
   password: !secret mqtt_password
   discovery: false  # Disable Home Assistant discovery to reduce MQTT overhead
+  # Default-on discover_ip silently adds 2 subscriptions (esphome/discover,
+  # esphome/ping/<name>), pushing us past EMQX's 10-sub limit.
+  discover_ip: false
   # Start fresh session on connect. EMQX Serverless persists sessions for 2h,
   # so old subscriptions from previous firmware count against the 10-sub limit.
   clean_session: true
@@ -180,7 +183,8 @@ mqtt:
   # Consolidated to stay under EMQX Serverless 10-subscription limit:
   # - 1 switch + 5 numbers + 2 cover = 8 entity subscriptions (auto)
   # - 2 on_message handlers (below)
-  # Total: 10 subscriptions (exactly at limit)
+  # Total: 10 subscriptions (exactly at limit; requires discover_ip: false)
+  # Over the limit, EMQX rejects the last-registered topic (dooya/schedule/set).
   on_message:
     - topic: dooya/curtain/command
       then:

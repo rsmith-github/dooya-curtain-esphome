@@ -161,6 +161,17 @@ export default function HomePage() {
     return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
   }
 
+  // Native time inputs use "HH:MM" strings
+  function toTimeValue(hour: number, minute: number): string {
+    return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+  }
+
+  function parseTimeValue(value: string): { hour: number; minute: number } | null {
+    const [h, m] = value.split(":").map((part) => parseInt(part, 10));
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    return { hour: h, minute: m };
+  }
+
   function getDisplayPosition(): number | null {
     // Return position when known with confidence (including 0% for fully closed)
     if (status?.positionKnown === true && typeof status?.position === "number") {
@@ -435,25 +446,17 @@ export default function HomePage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="font-body text-xs text-[var(--text-secondary)] block mb-1">Time</label>
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="23"
-                          value={editValues.partialHour ?? 7}
-                          onChange={(e) => setEditValues({ ...editValues, partialHour: parseInt(e.target.value) || 0 })}
-                          className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
-                        />
-                        <span className="text-[var(--text-secondary)]">:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="59"
-                          value={editValues.partialMinute ?? 0}
-                          onChange={(e) => setEditValues({ ...editValues, partialMinute: parseInt(e.target.value) || 0 })}
-                          className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
-                        />
-                      </div>
+                      <input
+                        type="time"
+                        step="60"
+                        required
+                        value={toTimeValue(editValues.partialHour ?? 7, editValues.partialMinute ?? 0)}
+                        onChange={(e) => {
+                          const t = parseTimeValue(e.target.value);
+                          if (t) setEditValues({ ...editValues, partialHour: t.hour, partialMinute: t.minute });
+                        }}
+                        className="w-full min-h-11 px-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded font-body text-base tabular-nums text-[var(--text-primary)]"
+                      />
                     </div>
                     <div>
                       <label className="font-body text-xs text-[var(--text-secondary)] block mb-1">
@@ -529,25 +532,17 @@ export default function HomePage() {
                   </div>
                   <div>
                     <label className="font-body text-xs text-[var(--text-secondary)] block mb-1">Time</label>
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        min="0"
-                        max="23"
-                        value={editValues.fullHour ?? 9}
-                        onChange={(e) => setEditValues({ ...editValues, fullHour: parseInt(e.target.value) || 0 })}
-                        className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
-                      />
-                      <span className="text-[var(--text-secondary)]">:</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        value={editValues.fullMinute ?? 30}
-                        onChange={(e) => setEditValues({ ...editValues, fullMinute: parseInt(e.target.value) || 0 })}
-                        className="w-14 px-2 py-1.5 bg-[var(--surface)] border border-[var(--border)] rounded text-center font-body tabular-nums text-[var(--text-primary)]"
-                      />
-                    </div>
+                    <input
+                      type="time"
+                      step="60"
+                      required
+                      value={toTimeValue(editValues.fullHour ?? 9, editValues.fullMinute ?? 30)}
+                      onChange={(e) => {
+                        const t = parseTimeValue(e.target.value);
+                        if (t) setEditValues({ ...editValues, fullHour: t.hour, fullMinute: t.minute });
+                      }}
+                      className="w-full sm:w-48 min-h-11 px-3 py-2 bg-[var(--surface)] border border-[var(--border)] rounded font-body text-base tabular-nums text-[var(--text-primary)]"
+                    />
                   </div>
                   <div className="flex gap-2 justify-end">
                     <button
